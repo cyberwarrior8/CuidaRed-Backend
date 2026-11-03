@@ -2,6 +2,8 @@
 
 API de CuidaRed en **JavaScript / Node.js / Express**. Fase 1 en implementación; las fases 2–8 están pendientes. Consultar [plan](PLAN-DESARROLLO-BACKEND.md), [contexto](CONTEXTO-BACKEND.md), [guía](AGENTS.md) y [cambios](CAMBIOS-ACTUALES.md).
 
+Contrato compartido con el frontend: [convenciones de API — CR-162](docs/CONVENCIONES-API.md), incluyendo errores, paginación, orden y filtros.
+
 ## Instalación y ejecución
 
 Requiere Node.js 24.19 o una versión posterior de la rama 24 y npm. Desde este repositorio:

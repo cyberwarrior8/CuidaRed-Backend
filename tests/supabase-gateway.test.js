@@ -1,6 +1,8 @@
 /* Transporte SDK interceptado, sin proyecto real · RF-09. © 2026 Equipo CuidaRed – INTEC. */
 import { describe, expect, it, vi } from 'vitest';
 import { createSupabaseGateway } from '../src/modules/access/supabase-gateway.js';
+import request from 'supertest';
+import { createApp } from '../src/app.js';
 
 const env = {
   SUPABASE_URL: 'https://auth.example.test',
@@ -84,15 +86,83 @@ describe('adaptador Supabase con contexto del usuario', () => {
       message: 'No se pudo guardar el perfil con esos datos.',
     });
   });
-  it('convierte errores RPC de permisos y datos en respuestas controladas', async () => {
-    for (const [code, status] of [
-      ['42501', 401],
-      ['22023', 422],
-    ]) {
-      const fetch = vi.fn().mockResolvedValue(json({ code }, 400));
-      await expect(
-        createSupabaseGateway(env, fetch).forToken('token').updateProfile({}),
-      ).rejects.toMatchObject({ status });
-    }
+  it.each([
+    ['28000', 401, 'UNAUTHORIZED'],
+    ['42501', 403, 'FORBIDDEN'],
+    ['P0002', 404, 'NOT_FOUND'],
+    ['22023', 422, 'INVALID_INPUT'],
+    ['23514', 422, 'INVALID_INPUT'],
+  ])('CR-162: transforma SQLSTATE %s en HTTP %i y %s', async (sqlstate, status, code) => {
+    const fetch = vi.fn().mockResolvedValue(
+      json(
+        {
+          code: sqlstate,
+          message: 'private_message',
+          details: 'private_details',
+          hint: 'private_hint',
+        },
+        400,
+      ),
+    );
+    await expect(
+      createSupabaseGateway(env, fetch).forToken('token').updateProfile({}),
+    ).rejects.toMatchObject({ status, code });
   });
+});
+
+describe('CR-162: contrato HTTP desde errores RPC reales del adaptador', () => {
+  it.each([
+    ['28000', 401, 'UNAUTHORIZED'],
+    ['42501', 403, 'FORBIDDEN'],
+    ['P0002', 404, 'NOT_FOUND'],
+    ['22023', 422, 'INVALID_INPUT'],
+    ['23514', 422, 'INVALID_INPUT'],
+    ['23505', 409, 'PROFILE_CONFLICT'],
+    ['XX000', 503, 'DEPENDENCY_UNAVAILABLE'],
+    ['PGRST202', 503, 'DEPENDENCY_UNAVAILABLE'],
+  ])(
+    '%s conserva HTTP %i y código %s sin detalles del proveedor',
+    async (sqlstate, status, code) => {
+      const fetch = vi.fn(async (url) => {
+        if (url.endsWith('/auth/v1/user')) return json(user);
+        if (url.endsWith('/rpc/api_sesion')) return json({ vigente: true });
+        if (url.endsWith('/rpc/api_mi_perfil'))
+          return json({
+            usuario_id: user.id,
+            nombres: 'Ana',
+            apellidos: 'Pérez',
+            estado: 'activo',
+          });
+        return json(
+          {
+            code: sqlstate,
+            message: 'private_message',
+            details: 'private_details',
+            hint: 'private_hint',
+          },
+          400,
+        );
+      });
+      const audit = vi.fn();
+      const app = createApp({
+        env: { origins: [] },
+        gateway: createSupabaseGateway(env, fetch),
+        audit,
+      });
+      const response = await request(app)
+        .patch('/api/v1/me')
+        .auth('token', { type: 'bearer' })
+        .send({ nombres: 'Ana' })
+        .expect(status);
+      expect(response.body.error.code).toBe(code);
+      expect(response.body.error.message).toEqual(expect.any(String));
+      expect(response.body.requestId).toBe(response.headers['x-request-id']);
+      for (const marker of ['private_message', 'private_details', 'private_hint']) {
+        expect(JSON.stringify(response.body)).not.toContain(marker);
+        expect(JSON.stringify(audit.mock.calls)).not.toContain(marker);
+      }
+      expect(response.body.error).not.toHaveProperty('details');
+      expect(response.body.error).not.toHaveProperty('hint');
+    },
+  );
 });

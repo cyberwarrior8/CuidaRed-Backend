@@ -21,6 +21,8 @@ Base `/api/v1`. Todas las operaciones de esta tabla requieren `Authorization: Be
 
 Las respuestas exitosas usan `{ "data": ... }`; las de error `{ "error": { "code", "message" }, "requestId" }`. Errores públicos: 400 JSON inválido, 401 sesión inválida/vencida, 403 usuario inactivo/origen no permitido, 409 conflicto, 413 cuerpo excedido, 422 entrada inválida, 429 límite HTTP y 503 dependencia/configuración de persistencia no disponible. Los detalles del proveedor no se exponen.
 
+CR-162 precisa además `28000 → 401 / UNAUTHORIZED`, `42501 → 403 / FORBIDDEN`, `P0002 → 404 / NOT_FOUND` y `22023`/`23514 → 422 / INVALID_INPUT`. No se infiere sesión vencida a partir de permisos insuficientes. Las [convenciones de API](CONVENCIONES-API.md) contienen el contrato aprobado de errores, paginación y filtros; `/me` y las acciones de sesión no son colecciones ni se paginan.
+
 Ejemplo de edición:
 
 ```http

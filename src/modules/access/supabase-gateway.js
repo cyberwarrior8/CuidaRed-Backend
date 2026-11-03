@@ -39,7 +39,15 @@ export function createSupabaseGateway(env, fetchImpl = globalThis.fetch) {
       const rpc = async (name, parameters = {}) => {
         const { data, error } = await db.rpc(name, parameters);
         if (error) {
-          if (error.code === '42501') throw expired();
+          if (error.code === '28000') {
+            throw new AppError(401, 'UNAUTHORIZED', 'Inicia sesión de nuevo.');
+          }
+          if (error.code === '42501') {
+            throw new AppError(403, 'FORBIDDEN', 'No tienes permiso para realizar esta acción.');
+          }
+          if (error.code === 'P0002') {
+            throw new AppError(404, 'NOT_FOUND', 'Recurso no encontrado.');
+          }
           if (error.code === '23505') {
             throw new AppError(
               409,
@@ -47,7 +55,7 @@ export function createSupabaseGateway(env, fetchImpl = globalThis.fetch) {
               'No se pudo guardar el perfil con esos datos.',
             );
           }
-          if (error.code === '22023') {
+          if (error.code === '22023' || error.code === '23514') {
             throw new AppError(422, 'INVALID_INPUT', 'Revisa los datos del formulario.');
           }
           throw unavailable();

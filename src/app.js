@@ -12,6 +12,8 @@ export function createApp({ env, gateway, audit }) {
   app.disable('x-powered-by');
   // No confiar en X-Forwarded-For sin conocer y configurar el proxy de despliegue.
   app.set('trust proxy', false);
+  // CR-162: conservar filter[campo] como clave literal y detectar valores repetidos.
+  app.set('query parser', 'simple');
   app.use((req, res, next) => {
     res.locals.requestId = randomUUID();
     res.set('X-Request-Id', res.locals.requestId);
