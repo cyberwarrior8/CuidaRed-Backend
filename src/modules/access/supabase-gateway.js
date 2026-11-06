@@ -93,8 +93,39 @@ export function createSupabaseGateway(env, fetchImpl = globalThis.fetch) {
         if (error) throw mapRpcError(error, rpcOptions);
         return data;
       };
+      /**
+       * Storage privado con el JWT del usuario: las políticas de storage.objects deciden (CR-160). Solo URLs
+       * firmadas de corta duración; la API nunca recibe ni sirve el contenido de los archivos.
+       */
+      const storage = (bucket) => {
+        if (!/^[a-z0-9-]+$/.test(bucket)) throw new Error('Bucket inválido.');
+        const files = db.storage.from(bucket);
+        const check = (error) => {
+          if (!error) return;
+          if (error.statusCode === '403' || error.status === 403) {
+            throw new AppError(403, 'FORBIDDEN', 'No tienes permiso para realizar esta acción.');
+          }
+          if (error.statusCode === '404' || error.status === 404) {
+            throw new AppError(404, 'NOT_FOUND', 'Recurso no encontrado.');
+          }
+          throw unavailable();
+        };
+        return {
+          async signedUploadUrl(path) {
+            const { data, error } = await files.createSignedUploadUrl(path);
+            check(error);
+            return { path: data.path, token: data.token, signedUrl: data.signedUrl };
+          },
+          async signedDownloadUrl(path, expiresInSeconds = 300) {
+            const { data, error } = await files.createSignedUrl(path, expiresInSeconds);
+            check(error);
+            return data.signedUrl;
+          },
+        };
+      };
       return {
         rpc,
+        storage,
         session: (action) => rpc('api_sesion', { p_accion: action }),
         getProfile: () => rpc('api_mi_perfil'),
         updateProfile: (data) =>
