@@ -1,4 +1,8 @@
 /* Aplicación Express y defensas HTTP · infraestructura. © 2026 Equipo CuidaRed – INTEC. */
+/*
+ * /api/v1 exige sesión válida (requireSession, una vez por petición). Las rutas de una cuenta cuelgan de
+ * /api/v1/cuentas/:cuentaId y pasan por requireCuenta, que resuelve rol, permisos y acceso operativo en la base.
+ */
 import { randomUUID } from 'node:crypto';
 import express from 'express';
 import helmet from 'helmet';
@@ -6,8 +10,22 @@ import cors from 'cors';
 import { rateLimit } from 'express-rate-limit';
 import { AppError } from './lib/errors.js';
 import { createAccessRouter } from './modules/access/access-routes.js';
+import { requireSession } from './modules/access/require-session.js';
+import { createAgendaRouter } from './modules/agenda/agenda-routes.js';
+import { createCatalogosRouter } from './modules/catalogos/catalogos-routes.js';
+import { createCuentaRouter } from './modules/cuentas/cuenta-routes.js';
+import { createCuentasRouter } from './modules/cuentas/cuentas-routes.js';
+import { requireCuenta } from './modules/cuentas/require-cuenta.js';
+import { createEnvejecientesRouter } from './modules/envejecientes/envejecientes-routes.js';
+import { createMiembrosRouter } from './modules/miembros/miembros-routes.js';
+import { createPublicoRouter } from './modules/publico/publico-routes.js';
+import { createMisMembresiasRouter } from './modules/miembros/mis-membresias-routes.js';
+import { createSeguimientoRouter } from './modules/seguimiento/seguimiento-routes.js';
+import { createSyncRouter } from './modules/sync/sync-routes.js';
+import { createVisitasRouter } from './modules/visitas/visitas-routes.js';
 
-export function createApp({ env, gateway, audit }) {
+export function createApp({ env, gateway, audit, adminGateway = null, now = () => new Date() }) {
+  const deps = { env, gateway, audit, adminGateway, now };
   const app = express();
   app.disable('x-powered-by');
   // No confiar en X-Forwarded-For sin conocer y configurar el proxy de despliegue.
@@ -45,7 +63,26 @@ export function createApp({ env, gateway, audit }) {
   );
   app.use(express.json({ limit: '16kb', strict: true }));
   app.get('/health/live', (_req, res) => res.json({ status: 'ok' }));
-  app.use('/api/v1', createAccessRouter({ gateway, audit }));
+  const api = express.Router();
+  // Únicas rutas sin sesión: /publico/* (cada ruta aplica su propio límite y validación).
+  api.use('/publico', createPublicoRouter(deps));
+  api.use(requireSession(gateway));
+  api.use(createAccessRouter(deps));
+  api.use(createCatalogosRouter(deps));
+  api.use(createCuentasRouter(deps));
+  api.use(createMisMembresiasRouter(deps));
+  // Rutas de una cuenta: el contexto (rol, permisos, vigencia) se resuelve una vez y lo usan todos los módulos.
+  const enCuenta = express.Router({ mergeParams: true });
+  enCuenta.use(requireCuenta());
+  enCuenta.use(createCuentaRouter(deps));
+  enCuenta.use(createMiembrosRouter(deps));
+  enCuenta.use(createEnvejecientesRouter(deps));
+  enCuenta.use(createSeguimientoRouter(deps));
+  enCuenta.use(createVisitasRouter(deps));
+  enCuenta.use(createAgendaRouter(deps));
+  enCuenta.use(createSyncRouter(deps));
+  api.use('/cuentas/:cuentaId', enCuenta);
+  app.use('/api/v1', api);
   app.use((_req, _res, next) => next(new AppError(404, 'NOT_FOUND', 'Recurso no encontrado.')));
   app.use((err, req, res, _next) => {
     let error = err;

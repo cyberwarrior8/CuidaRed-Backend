@@ -7,6 +7,8 @@ const schema = z.object({
   SUPABASE_URL: z.url(),
   SUPABASE_PUBLISHABLE_KEY: z.string().startsWith('sb_publishable_'),
   FRONTEND_ORIGINS: z.string().min(1),
+  // CR-160: opcional; solo habilita invitar miembros nuevos (crear su identidad Auth). Nunca va al frontend.
+  SUPABASE_SECRET_KEY: z.string().startsWith('sb_secret_').optional(),
 });
 
 export function readEnv(input) {
