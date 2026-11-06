@@ -22,7 +22,8 @@ if (!['localhost', '127.0.0.1', '::1'].includes(host)) {
   console.error('Solo se permite un PostgreSQL local (PGHOST=localhost).');
   process.exit(2);
 }
-const base = 'cuidared_validacion_local';
+// Base propia por ejecución: varias validaciones pueden correr a la vez sin pisarse.
+const base = `cuidared_validacion_local_${process.pid}`;
 const conservar = process.argv.includes('--conservar');
 // --solo=2b,3a: además de la base (2a y ayudas), carga solo las propuestas y pruebas con esos prefijos.
 const soloArg = process.argv.find((a) => a.startsWith('--solo='));

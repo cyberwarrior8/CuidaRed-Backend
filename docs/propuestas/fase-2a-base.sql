@@ -52,6 +52,11 @@ on conflict (codigo) do nothing;
 insert into cuidared.tipo_cuidado (nombre) values ('Cuidador remunerado'), ('Familiar cuidador'), ('Voluntario comunitario')
 on conflict (nombre) do nothing;
 
+-- Prioridad compartida por necesidades, alertas y tareas (DB.sql no la siembra), con código estable.
+alter table cuidared.prioridad add column codigo character varying unique check (codigo::text ~ '^[a-z_]+$');
+insert into cuidared.prioridad (nombre, orden, codigo) values ('Alta', 1, 'alta'), ('Media', 2, 'media'), ('Baja', 3, 'baja')
+on conflict (nombre) do update set codigo = excluded.codigo;
+
 insert into cuidared.tipo_vinculo (codigo, nombre) values
   ('cuidador_asignado', 'Cuidador asignado'),
   ('voluntario_asignado', 'Voluntario asignado'),

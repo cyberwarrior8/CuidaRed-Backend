@@ -9,6 +9,8 @@ const schema = z.object({
   FRONTEND_ORIGINS: z.string().min(1),
   // CR-160: opcional; solo habilita invitar miembros nuevos (crear su identidad Auth). Nunca va al frontend.
   SUPABASE_SECRET_KEY: z.string().startsWith('sb_secret_').optional(),
+  // Secreto del servidor para la huella HMAC de los códigos de seguimiento de visitantes (obligatorio en producción).
+  CODIGO_SEGUIMIENTO_SECRETO: z.string().min(32).optional(),
 });
 
 export function readEnv(input) {
@@ -20,6 +22,9 @@ export function readEnv(input) {
     );
   }
   const env = result.data;
+  if (env.NODE_ENV === 'production' && !env.CODIGO_SEGUIMIENTO_SECRETO) {
+    throw new Error('Configuración inválida: CODIGO_SEGUIMIENTO_SECRETO');
+  }
   const origins = env.FRONTEND_ORIGINS.split(',').map((v) => v.trim());
   for (const value of [env.SUPABASE_URL, ...origins]) {
     const url = new URL(value);

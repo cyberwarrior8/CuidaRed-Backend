@@ -61,6 +61,9 @@ export function createApp({ env, gateway, audit, adminGateway = null, now = () =
         next(new AppError(429, 'RATE_LIMITED', 'Espera un momento antes de intentar de nuevo.')),
     }),
   );
+  // Un lote de sync (hasta 25 visitas con observaciones) no cabe en 16 kB; solo esa ruta admite más. Si el analizador
+  // de la ruta ya leyó el cuerpo, el global no vuelve a leerlo.
+  app.use('/api/v1/cuentas/:cuentaId/sync', express.json({ limit: '256kb', strict: true }));
   app.use(express.json({ limit: '16kb', strict: true }));
   app.get('/health/live', (_req, res) => res.json({ status: 'ok' }));
   const api = express.Router();

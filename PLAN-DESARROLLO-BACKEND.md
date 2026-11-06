@@ -9,9 +9,9 @@ Cada fase entrega API, pruebas, documentación e integración mínima con el fro
 | Fase | Proceso               | Estado de implementación                                                                                                        |
 | ---- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
 | 1    | Perfil y Acceso       | Código, pruebas y persistencia aplicada con aprobación; pendiente configuración Auth y pruebas con usuarios reales. No cerrada. |
-| 2    | Organización          | Pendiente; resolver permisos, catálogos y alta/titularidad.                                                                     |
-| 3    | Envejecientes         | Pendiente; resolver validaciones, consentimiento y permisos sensibles.                                                          |
-| 4    | Visitas y Seguimiento | Pendiente; resolver estados, recurrencia, archivos y sincronización.                                                            |
+| 2    | Organización          | API, pruebas y propuesta SQL (2a–2c) validada en local, **sin aplicar**; pendiente aprobación de BD y Auth. No cerrada.         |
+| 3    | Envejecientes         | API, pruebas y propuesta SQL (3a–3b) validada en local, **sin aplicar**; consentimiento y retención siguen como propuesta.      |
+| 4    | Visitas y Seguimiento | API, pruebas y propuesta SQL (4a–4c) validada en local, **sin aplicar**; pendiente bucket, acceso `anon` y recurrencia.         |
 | 5    | Necesidades           | Pendiente; resolver catálogos, validaciones y transiciones.                                                                     |
 | 6    | Alertas               | Pendiente; resolver fuentes, ciclo, destinatarios y calendario.                                                                 |
 | 7    | Reportes              | Pendiente; resolver métricas, formatos y contenido médico.                                                                      |
@@ -26,7 +26,7 @@ Cada fase entrega API, pruebas, documentación e integración mínima con el fro
 - Validar identidad, proteger rutas e iniciar auditoría; documentar contratos y sustituir autenticación simulada.
 - La creación de Familia/Organización pertenece a la fase 2.
 
-**Decisiones posteriores aprobadas:** JavaScript, no TypeScript, en backend; Express, Zod, ESLint/Prettier, dos espacios y Vitest/Supertest; SDK Supabase en frontend con tokens validados por Express; solo activar invitaciones, sin autorregistro; códigos de correo de 15 minutos; contraseña de al menos ocho caracteres con mayúscula, minúscula, número y símbolo; sesión de hasta 12 horas y 30 minutos de inactividad, comprobados en servidor. Cédula del usuario: 11 dígitos sin guiones, nombres/apellidos obligatorios y teléfono opcional. Correo tomado de Auth verificado, sin autoasignación de rol/estado.
+**Decisiones posteriores aprobadas:** JavaScript, no TypeScript, en backend; Express, Zod, ESLint/Prettier, dos espacios y Vitest/Supertest; SDK Supabase en frontend con tokens validados por Express; ~~solo activar invitaciones, sin autorregistro~~ (sustituido el 06/11/2026: autorregistro del titular, ver fase 2); códigos de correo de 15 minutos; contraseña de al menos ocho caracteres con mayúscula, minúscula, número y símbolo; sesión de hasta 12 horas y 30 minutos de inactividad, comprobados en servidor. Cédula del usuario: 11 dígitos sin guiones, nombres/apellidos obligatorios y teléfono opcional. Correo tomado de Auth verificado, sin autoasignación de rol/estado.
 
 **Entregables:** backend ejecutable, acceso conectado, instalación y pruebas. **Cierre:** funcionan los flujos, se rechazan sesiones inválidas y usuarios desactivados y el acceso conectado no administra contraseñas con el simulador. La implementación inicial no equivale a cierre: consultar [fase 1](docs/FASE-1-PERFIL-Y-ACCESO.md).
 
@@ -41,6 +41,8 @@ Cada fase entrega API, pruebas, documentación e integración mínima con el fro
 - Cuenta Familia/Organización, titularidad, membresías históricas, roles por tipo y contexto de cuenta activa.
 - Perfiles de Cuidador vinculados a una identidad existente y parámetros por cuenta.
 - Prueba única de siete días y control de vigencia; Stripe se integra en fase 8.
+
+**Decisiones del 06/11/2026:** autorregistro del titular (crea su Familia u Organización y queda Coordinador o Administrador); prueba fija de 7 días a nivel de cuenta y sin plan. Detalle en [cambios](CAMBIOS-ACTUALES.md) y contratos en `docs/contratos/`.
 
 **Entregables:** administración de cuentas, miembros, cuidadores y configuración integrada. **Cierre:** una identidad participa en varias cuentas sin mezclar permisos; la baja revoca acceso; al vencer solo se conserva cuenta/suscripción según permisos.
 

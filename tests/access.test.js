@@ -22,6 +22,10 @@ function setup(overrides = {}) {
     session: vi.fn().mockResolvedValue({ vigente: true }),
     getProfile: vi.fn().mockResolvedValue(profile),
     updateProfile: vi.fn(async (input) => ({ ...profile, ...input })),
+    // Fase 2 (CR-164): GET /me también consulta las cuentas del usuario.
+    rpc: vi.fn(async (name) =>
+      name === 'api_mis_cuentas' ? { activas: [], pendientes: [] } : null,
+    ),
     ...overrides,
   };
   const audit = vi.fn();

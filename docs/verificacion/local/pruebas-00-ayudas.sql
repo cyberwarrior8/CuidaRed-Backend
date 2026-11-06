@@ -81,3 +81,31 @@ exception when others then
 end $$;
 
 grant execute on all functions in schema pruebas to authenticated, anon;
+
+-- Adulto mayor válido con o sin el bloque 3a cargado (cédula única generada y consentimiento si existe la columna).
+create sequence pruebas.secuencia_cedula start 90000000001;
+create function pruebas.envejeciente(p_cuenta bigint, p_nombres text default 'Adulto', p_apellidos text default 'Prueba',
+                                     p_sexo text default 'F', p_estado text default 'activo')
+returns uuid language plpgsql security definer set search_path = '' as $$
+declare v_id uuid; v_registrador uuid; v_cedula text := lpad(nextval('pruebas.secuencia_cedula')::text, 11, '0');
+begin
+  select c.usuario_titular_id into v_registrador from cuidared.cuenta c where c.cuenta_id = p_cuenta;
+  if exists (select 1 from information_schema.columns
+             where table_schema = 'cuidared' and table_name = 'envejeciente' and column_name = 'consentimiento_otorgado') then
+    execute $q$
+      insert into cuidared.envejeciente (cuenta_id, usuario_registrador_id, nombres, apellidos, cedula, fecha_nacimiento, sexo,
+                                         municipio_cod, direccion, estado, consentimiento_otorgado, consentimiento_otorgado_por,
+                                         consentimiento_fecha, consentimiento_registrado_por)
+      values ($1, $2, $3, $4, $5, date '1945-05-05', $6, '0101', 'Calle 1', $7, true, 'adulto', now(), $2)
+      returning envejeciente_id$q$
+      into v_id using p_cuenta, v_registrador, p_nombres, p_apellidos, v_cedula, p_sexo, p_estado;
+  else
+    insert into cuidared.envejeciente (cuenta_id, usuario_registrador_id, nombres, apellidos, cedula, fecha_nacimiento, sexo,
+                                       municipio_cod, direccion, estado)
+    values (p_cuenta, v_registrador, p_nombres, p_apellidos, v_cedula, date '1945-05-05', p_sexo, '0101', 'Calle 1', p_estado)
+    returning envejeciente_id into v_id;
+  end if;
+  return v_id;
+end $$;
+grant usage on sequence pruebas.secuencia_cedula to authenticated, anon;
+grant execute on function pruebas.envejeciente(bigint, text, text, text, text) to authenticated, anon;
