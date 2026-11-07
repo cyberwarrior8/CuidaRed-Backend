@@ -1,5 +1,77 @@
 # Cambios actuales
 
+## 2026-11-06 — Fases 2 a 4: Organización, Envejecientes, Visitas y Seguimiento
+
+**Propósito:** el usuario pidió terminar lo que faltaba de la fase 2 y llegar hasta la fase 4 de las ocho. Confirmó dos decisiones nuevas: **prueba gratuita fija de 7 días** (a nivel de cuenta, sin plan) y **autorregistro del titular** para crear su Familia u Organización, que sustituye el «solo invitaciones» de la fase 1 (D17). Todo el SQL son **propuestas sin aplicar** en `docs/propuestas/fase-2a…4c-*.sql`, validadas en un PostgreSQL local desechable. No se escribió nada en Supabase, no se cambió la configuración Auth ni se crearon buckets. Lo que no definen V2 ni el SRS se marca como «Propuesta técnica» en cada contrato y queda para confirmación.
+
+### Base compartida (2a)
+
+- `src/lib/business-errors.js`: códigos de negocio `CR_*` en lista cerrada (`CR_CUENTA_SIN_ACCESO` 403, `CR_LIMITE_PLAN` 409, `CR_ROL_NO_PERMITIDO` 422, `CR_ESTADO_INVALIDO` 409, `CR_CONFLICTO` 409); cualquier otro `P0001` sigue cayendo en el error genérico.
+- `src/modules/access/supabase-gateway.js`: `rpc` genérica para nombres `api_*` con el mapeo de CR-162; cliente `publico()` con la clave publicable y solo para `api_publico_*`; Storage privado con URLs firmadas usando el JWT del usuario.
+- `src/lib/supabase-admin.js` y `SUPABASE_SECRET_KEY` opcional: cliente privilegiado aislado, solo para invitar identidades nuevas (CR-160). Sin la clave, la invitación de personas sin cuenta Auth responde 503; el resto funciona.
+- `src/modules/cuentas/permisos.js`: matriz V2 de 5 roles × acciones con ajustes por tipo de cuenta (propuesta D04) y `scripts/generar-permisos-sql.js`, que genera la siembra `rol_permiso` del SQL para que API y base no se desalineen.
+- `src/modules/cuentas/require-cuenta.js` y `src/app.js`: rutas por cuenta en `/api/v1/cuentas/:cuentaId` con `requireCuenta` (contexto desde `api_contexto_cuenta`, nunca desde el cliente), `requirePermiso` y `requireAccesoOperativo` (D07: cuenta vencida solo conserva cuenta y suscripción). El router público va antes de `requireSession`.
+- `fase-2a-base.sql`: códigos de tipo de cuenta, categorías V2, roles, prioridades, planes V2 (Básico Familiar, Cuidado Integral, Operación Base, Gestión Comunitaria Avanzada) con funcionalidades (CR-157), `cuenta.plan_id` nulo durante la prueba, restricción de 7 días, membresía vigente única, `cuidador.cuenta_id`, parámetros, `rol_permiso`, esquema interno `cuidared_interno` (sesión, acceso operativo, permisos, alcance por adulto) y `api_contexto_cuenta`, `api_mis_cuentas` y `api_sesion` sin exigir invitación.
+
+### Cuentas, configuración y suscripción (2b)
+
+- `POST /cuentas` (autorregistro: el titular queda Coordinador en Familia o Administrador en Organización, cuenta en prueba de 7 días), `GET /me` con `cuentas` (CR-164), `GET/PATCH /cuentas/:id`, `/configuracion` (RF-19) y `/suscripcion` (RF-20, con límites, uso y planes).
+- `GET /catalogos/:catalogo` con caché en memoria y lista permitida de catálogos (CR-165).
+- `fase-2b-cuentas.sql`: 7 RPC y `actualizar_vencimientos()`. Las invitaciones pendientes **reservan cupo** del plan.
+- Contrato: `docs/contratos/cuentas.md`.
+
+### Miembros, roles, titularidad y Cuidador (2c)
+
+- Invitar (correo, cédula, nombres y rol; si la identidad no existe se invita con el cliente privilegiado), aceptar o rechazar desde `/me/membresias`, cambiar rol con historial (la membresía anterior se cierra y se crea otra), desactivar/reactivar, transferir titularidad y perfil de Cuidador vinculado a la membresía (RF-12).
+- En Familia el Coordinador gestiona accesos; los roles permitidos dependen del tipo de cuenta y se validan también en la base.
+- `fase-2c-miembros.sql`: 13 RPC con bloqueo de fila para límites y concurrencia. Contrato: `docs/contratos/miembros.md`.
+
+### Adultos mayores (3a)
+
+- Expediente con cédula obligatoria y única en toda la plataforma (D09, también ante altas concurrentes y sin revelar la cuenta ajena), consentimiento obligatorio, exactamente un contacto principal de emergencia (RF-17) y cambio de estado con motivo (CR-172).
+- Lectura por nivel: datos sensibles solo para quien tiene `adultos:ver-sensible`; Cuidador y Voluntario solo ven adultos asignados; Familiar solo con permiso explícito.
+- `fase-3a-envejecientes.sql`: 10 RPC. Contrato: `docs/contratos/envejecientes.md`.
+
+### Seguimiento: asignaciones, riesgo, indicaciones e historial (3b)
+
+- Asignar Cuidador y Voluntario, autorizar o revocar Familiar responsable (RF-12, RF-13).
+- Riesgo (D11): cuestionario de 100 puntos con pesos 30/40/30 y niveles 0–29/30–54/55–100; el nivel vigente es el máximo de los factores vigentes y, sin factores, «Sin evaluación vigente».
+- Indicaciones médicas restringidas (RF-15) e historial consolidado paginado (CU-06).
+- `fase-3b-seguimiento.sql`: 14 RPC y una tabla nueva. Contrato: `docs/contratos/seguimiento.md`.
+
+### Visitas y solicitudes externas (4a)
+
+- Programar (requiere programar y autorizar: Coordinador en Familia; Administrador o Coordinador en Organización, D05), iniciar, registrar realización y cancelar. Solo las visitas realizadas cuentan como contacto.
+- Solicitudes de visitantes externos por `/api/v1/publico` sin sesión: solo organizaciones con acceso operativo, nunca familias. El código `VIS-XXXX-XXXX` se entrega una sola vez y a la base solo llega su huella **HMAC-SHA256** con `CODIGO_SEGUIMIENTO_SECRETO` (nuevo en `src/config/env.js`, obligatorio en producción; SHA-256 simple en desarrollo). Los datos del visitante viven solo en `solicitud_visita`, no en las notas de la visita.
+- `fase-4a-visitas.sql`: 14 RPC y una tabla nueva. Contrato: `docs/contratos/visitas.md`.
+
+### Agenda, tareas y evidencias (4b)
+
+- Tareas con responsable, estados y cancelación; evidencias en bucket privado `evidencias` (5 MB; JPEG, PNG, WebP o PDF; ruta `cuenta/<id>/tarea/<id>/<uuid>.<ext>`) mediante URL firmada. Una tarea que exige evidencia no se completa sin una evidencia **validada** (D12).
+- `fase-4b-agenda.sql`: 12 RPC y políticas de Storage. Se detiene si `tarea_agenda` o `evidencia` ya tienen filas. Contrato: `docs/contratos/agenda.md`.
+
+### Sincronización sin conexión (4c, RF-10)
+
+- `POST /cuentas/:cuentaId/sync` (`sync:usar`): lote de 1 a 25 operaciones de visita (`registrar` o `iniciar`), procesadas en orden y cada una en su propia RPC y transacción; responde un resultado por operación (`aplicada`, `duplicada`, `conflicto` o `rechazada`). `GET /cuentas/:cuentaId/sync/:idCliente` devuelve el resultado guardado de una operación propia.
+- Idempotencia por `id_cliente` en la tabla nueva `operacion_sync` (no guarda el contenido); Last-Write-Wins con marcas UTC en milisegundos, empate a favor del servidor, marcas de más de 5 minutos en el futuro rechazadas y visitas cerradas inmodificables. Permisos revalidados en cada operación; con la cuenta vencida cada operación sale `rechazada` con `SUBSCRIPTION_INACTIVE` y se puede reintentar al renovar.
+- `src/app.js`: solo `/api/v1/cuentas/:cuentaId/sync` admite cuerpos de hasta 256 kB; el resto de la API sigue en 16 kB.
+- `fase-4c-sync.sql` (depende de 2a, 3b y 4a): 2 RPC y una tabla nueva. Contrato: `docs/contratos/sync.md`. Todo lo de D16 es propuesta técnica. Falta una prueba de concurrencia con dos sesiones antes de aplicar.
+
+### Validación local
+
+- `scripts/validar-propuestas-local.js` (`npm run validar:sql`): crea una base desechable con nombre propio, carga un esquema `auth` simulado, `DB.sql`, la migración de fase 1, las propuestas y las pruebas `docs/verificacion/local/pruebas-*.sql`, y la borra al terminar. Rechaza cualquier host que no sea local.
+- **Resultado:** 16 archivos y 1072 pruebas backend aprobadas, ESLint sin errores, Prettier en los archivos nuevos y validación SQL completa (propuestas 2a–4c y 21 archivos de pruebas SQL) sin errores. No se usó ninguna base ni cuenta real.
+- Frontend hermano (PR #3): autorregistro, invitaciones, resumen de cuenta y miembros en el acceso conectado, con 84 pruebas de acceso aprobadas.
+
+### Pendiente de aprobación antes de aplicar
+
+- Revisar y aplicar las propuestas SQL en orden (2a → 4c).
+- Conceder `USAGE` sobre `cuidared_api` al rol `anon` solo para las RPC `api_publico_*`.
+- Configuración Auth: habilitar registros, plantilla de código OTP de alta y MFA.
+- Crear el bucket privado `evidencias` y cargar provincias/municipios en remoto.
+- Confirmar `POST /visitas/realizada` (visita realizada sin programar), que choca con la «programación previa» de V2.
+- Decisiones marcadas como propuesta técnica: D04, D05, D07 (flujo comercial), D09–D16.
+
 ## 2026-10-31 — CR-162: errores y convenciones de API
 
 - `src/modules/access/supabase-gateway.js`: mapeo explícito `28000 → 401 / UNAUTHORIZED`, `42501 → 403 / FORBIDDEN`, `P0002 → 404 / NOT_FOUND` y `22023`/`23514 → 422 / INVALID_INPUT`. Se conserva `23505 → 409` y el fallback 503, sin revelar mensajes, detalles o pistas del proveedor.

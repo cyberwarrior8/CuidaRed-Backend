@@ -1,6 +1,6 @@
 # CuidaRed-Backend
 
-API de CuidaRed en **JavaScript / Node.js / Express**. Fase 1 en implementación; las fases 2–8 están pendientes. Consultar [plan](PLAN-DESARROLLO-BACKEND.md), [contexto](CONTEXTO-BACKEND.md), [guía](AGENTS.md) y [cambios](CAMBIOS-ACTUALES.md).
+API de CuidaRed en **JavaScript / Node.js / Express**. Fase 1 en implementación; fases 2–4 con API, pruebas y propuestas SQL validadas en local pero **sin aplicar** (contratos en `docs/contratos/`); fases 5–8 pendientes. Consultar [plan](PLAN-DESARROLLO-BACKEND.md), [contexto](CONTEXTO-BACKEND.md), [guía](AGENTS.md) y [cambios](CAMBIOS-ACTUALES.md).
 
 Contrato compartido con el frontend: [convenciones de API — CR-162](docs/CONVENCIONES-API.md), incluyendo errores, paginación, orden y filtros.
 
@@ -25,6 +25,7 @@ Usar solo `SUPABASE_PUBLISHABLE_KEY=sb_publishable_...`; nunca una clave secret/
 npm run lint
 npm run format:check
 npm test
+npm run validar:sql   # propuestas SQL en un PostgreSQL local desechable (PGHOST local)
 ```
 
 `npm run format` aplica Prettier; `npm run test:watch` observa pruebas. Vitest/Supertest usan datos sintéticos y dependencias interceptadas: no requieren ni modifican una base real. Las pruebas HTTP abren puertos locales temporales.
@@ -34,6 +35,7 @@ npm test
 - `src/app.js`, `src/server.js`: aplicación y arranque.
 - `src/config/`, `src/lib/`: entorno, errores y auditoría técnica.
 - `src/modules/access/`: sesión, perfil, validación y adaptador Supabase.
+- `src/modules/{cuentas,catalogos,miembros,envejecientes,seguimiento,visitas,publico,agenda,sync}/`: fases 2–4, una carpeta por funcionalidad.
 - `tests/`: pruebas `*.test.js`.
 - `docs/`: contratos y propuestas de cambios; no se ejecutan automáticamente.
 
