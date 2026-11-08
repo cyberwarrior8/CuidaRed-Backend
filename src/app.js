@@ -18,7 +18,6 @@ import { createCuentasRouter } from './modules/cuentas/cuentas-routes.js';
 import { requireCuenta } from './modules/cuentas/require-cuenta.js';
 import { createEnvejecientesRouter } from './modules/envejecientes/envejecientes-routes.js';
 import { createMiembrosRouter } from './modules/miembros/miembros-routes.js';
-import { createPublicoRouter } from './modules/publico/publico-routes.js';
 import { createMisMembresiasRouter } from './modules/miembros/mis-membresias-routes.js';
 import { createSeguimientoRouter } from './modules/seguimiento/seguimiento-routes.js';
 import { createSyncRouter } from './modules/sync/sync-routes.js';
@@ -67,8 +66,10 @@ export function createApp({ env, gateway, audit, adminGateway = null, now = () =
   app.use(express.json({ limit: '16kb', strict: true }));
   app.get('/health/live', (_req, res) => res.json({ status: 'ok' }));
   const api = express.Router();
-  // Únicas rutas sin sesión: /publico/* (cada ruta aplica su propio límite y validación).
-  api.use('/publico', createPublicoRouter(deps));
+  // El flujo externo queda aislado hasta aprobar sus controles de seguridad.
+  api.use('/publico', (_req, _res, next) =>
+    next(new AppError(404, 'NOT_FOUND', 'Recurso no encontrado.')),
+  );
   api.use(requireSession(gateway));
   api.use(createAccessRouter(deps));
   api.use(createCatalogosRouter(deps));

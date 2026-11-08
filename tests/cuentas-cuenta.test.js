@@ -59,8 +59,8 @@ const suscripcionCruda = (extra = {}) => ({
   prueba: {
     gratuita: true,
     vigente: true,
-    fecha_inicio: '2026-11-06',
-    fecha_fin: '2026-11-13',
+    fecha_inicio: '2026-11-06T12:00:00.000Z',
+    fecha_fin: '2026-11-13T12:00:00.000Z',
     dias_restantes: 7,
   },
   plan: null,
@@ -115,7 +115,7 @@ describe('aislamiento: una cuenta ajena no existe para el usuario', () => {
     const peticion = conSesion(request(app)[metodo.toLowerCase()](`/api/v1/cuentas/9${ruta}`));
     await (cuerpo ? peticion.send(cuerpo) : peticion).expect(404);
     expect(rpc).toHaveBeenCalledTimes(1);
-    expect(rpc).toHaveBeenCalledWith('api_contexto_cuenta', { p_cuenta_id: 9 });
+    expect(rpc).toHaveBeenCalledWith('api_contexto_cuenta', { p_cuenta_id: '9' });
   });
 
   it('exige sesión en todas las rutas de la cuenta', async () => {
@@ -131,7 +131,7 @@ describe('RF-11: GET /cuentas/:cuentaId', () => {
   it.each(combinaciones)('cualquier miembro lo lee (%s, %s)', async (tipo, rol) => {
     const rpc = cuentaCon(rol, tipo, { api_obtener_cuenta: () => detalleCrudo(rol, tipo) }, {});
     const res = await get(crearApp({ rpc }).app, '').expect(200);
-    expect(rpc).toHaveBeenCalledWith('api_obtener_cuenta', { p_cuenta_id: 7 });
+    expect(rpc).toHaveBeenCalledWith('api_obtener_cuenta', { p_cuenta_id: '7' });
     expect(res.body.data.cuenta).toEqual({
       cuenta_id: '7',
       nombre: 'Familia Pérez',
@@ -210,7 +210,7 @@ describe('RF-11: PATCH /cuentas/:cuentaId (organizacion:configurar)', () => {
       200,
     );
     expect(rpc).toHaveBeenCalledWith('api_actualizar_cuenta', {
-      p_cuenta_id: 7,
+      p_cuenta_id: '7',
       p_datos: { nombre: 'Casa Pérez', telefono: '8095551234' },
     });
     expect(res.body.data.cuenta.cuenta_id).toBe('7');
@@ -226,13 +226,14 @@ describe('RF-11: PATCH /cuentas/:cuentaId (organizacion:configurar)', () => {
     expect(rpc).not.toHaveBeenCalledWith('api_actualizar_cuenta', expect.anything());
   });
 
-  it('con la cuenta vencida sigue permitiendo gestionar la cuenta', async () => {
+  it('con la cuenta vencida bloquea editar los datos de cuenta', async () => {
     const vencido = contextoVencido('administrador', 'organizacion');
     const rpc = rpcPorNombre({
       api_contexto_cuenta: () => vencido,
       api_actualizar_cuenta: () => ({ ...detalleCrudo(), contexto: vencido }),
     });
-    await patch(crearApp({ rpc }).app, '', { direccion: 'Calle 9' }).expect(200);
+    await patch(crearApp({ rpc }).app, '', { direccion: 'Calle 9' }).expect(403);
+    expect(rpc).toHaveBeenCalledTimes(1);
   });
 
   it('una actualización parcial admite vaciar dirección, teléfono y correo con null', async () => {
@@ -243,7 +244,7 @@ describe('RF-11: PATCH /cuentas/:cuentaId (organizacion:configurar)', () => {
       200,
     );
     expect(rpc).toHaveBeenCalledWith('api_actualizar_cuenta', {
-      p_cuenta_id: 7,
+      p_cuenta_id: '7',
       p_datos: { direccion: null, telefono: null, correo: null },
     });
   });
@@ -292,7 +293,7 @@ describe('RF-19: configuración de la cuenta', () => {
   it.each(combinaciones)('cualquier miembro la lee (%s, %s)', async (tipo, rol) => {
     const rpc = cuentaCon(rol, tipo, { api_obtener_configuracion: () => parametros() });
     const res = await get(crearApp({ rpc }).app, '/configuracion').expect(200);
-    expect(rpc).toHaveBeenCalledWith('api_obtener_configuracion', { p_cuenta_id: 7 });
+    expect(rpc).toHaveBeenCalledWith('api_obtener_configuracion', { p_cuenta_id: '7' });
     expect(res.body.data).toEqual(parametros());
     expect(res.body.data[0]).toEqual({
       nombre: 'dias_sin_visita_alerta',
@@ -304,12 +305,13 @@ describe('RF-19: configuración de la cuenta', () => {
     });
   });
 
-  it('con la cuenta vencida sigue accesible', async () => {
+  it('con la cuenta vencida bloquea leer la configuración operativa', async () => {
     const rpc = rpcPorNombre({
       api_contexto_cuenta: () => contextoVencido('voluntario', 'organizacion'),
       api_obtener_configuracion: () => parametros(),
     });
-    await get(crearApp({ rpc }).app, '/configuracion').expect(200);
+    await get(crearApp({ rpc }).app, '/configuracion').expect(403);
+    expect(rpc).toHaveBeenCalledTimes(1);
   });
 
   it.each(gestionan)(
@@ -326,7 +328,7 @@ describe('RF-19: configuración de la cuenta', () => {
       }).expect(200);
       // Números y booleanos JSON se guardan como texto; null restablece el valor general.
       expect(rpc).toHaveBeenCalledWith('api_actualizar_configuracion', {
-        p_cuenta_id: 7,
+        p_cuenta_id: '7',
         p_valores: {
           dias_sin_visita_alerta: '30',
           notificar_casos_prioritarios: 'false',
@@ -358,14 +360,15 @@ describe('RF-19: configuración de la cuenta', () => {
     expect(rpc).not.toHaveBeenCalledWith('api_actualizar_configuracion', expect.anything());
   });
 
-  it('con la cuenta vencida el administrador sigue pudiendo configurar', async () => {
+  it('con la cuenta vencida el administrador no puede configurar', async () => {
     const rpc = rpcPorNombre({
       api_contexto_cuenta: () => contextoVencido('administrador', 'organizacion'),
       api_actualizar_configuracion: () => parametros(true),
     });
     await patch(crearApp({ rpc }).app, '/configuracion', {
       valores: { dias_sin_visita_alerta: '20' },
-    }).expect(200);
+    }).expect(403);
+    expect(rpc).toHaveBeenCalledTimes(1);
   });
 
   it.each([
@@ -405,15 +408,15 @@ describe('RF-20: GET /cuentas/:cuentaId/suscripcion', () => {
     async (tipo, rol) => {
       const rpc = cuentaCon(rol, tipo, { api_obtener_suscripcion: () => suscripcionCruda() });
       const res = await get(crearApp({ rpc }).app, '/suscripcion').expect(200);
-      expect(rpc).toHaveBeenCalledWith('api_obtener_suscripcion', { p_cuenta_id: 7 });
+      expect(rpc).toHaveBeenCalledWith('api_obtener_suscripcion', { p_cuenta_id: '7' });
       expect(res.body.data).toMatchObject({
         estado: 'prueba',
         acceso_operativo: true,
         prueba: {
           gratuita: true,
           vigente: true,
-          fecha_inicio: '2026-11-06',
-          fecha_fin: '2026-11-13',
+          fecha_inicio: '2026-11-06T12:00:00.000Z',
+          fecha_fin: '2026-11-13T12:00:00.000Z',
           dias_restantes: 7,
         },
         plan: null,
@@ -477,8 +480,8 @@ describe('RF-20: GET /cuentas/:cuentaId/suscripcion', () => {
             prueba: {
               gratuita: true,
               vigente: false,
-              fecha_inicio: '2026-10-01',
-              fecha_fin: '2026-10-08',
+              fecha_inicio: '2026-10-01T12:00:00.000Z',
+              fecha_fin: '2026-10-08T12:00:00.000Z',
               dias_restantes: 0,
             },
             plan: {
@@ -518,8 +521,8 @@ describe('RF-20: GET /cuentas/:cuentaId/suscripcion', () => {
           prueba: {
             gratuita: true,
             vigente: false,
-            fecha_inicio: '2026-10-01',
-            fecha_fin: '2026-10-08',
+            fecha_inicio: '2026-10-01T12:00:00.000Z',
+            fecha_fin: '2026-10-08T12:00:00.000Z',
             dias_restantes: 0,
           },
           funcionalidades: [],

@@ -38,7 +38,7 @@ import { createAgendaService } from './agenda-service.js';
 export function createAgendaRouter({ audit, now }) {
   const router = Router({ mergeParams: true });
   const service = (res) => createAgendaService(res.locals.access.repository, { now });
-  const cuentaOf = (res) => Number(res.locals.cuenta.cuentaId);
+  const cuentaOf = (res) => res.locals.cuenta.cuentaId;
   const log = (res, action) =>
     audit({
       requestId: res.locals.requestId,

@@ -9,6 +9,44 @@
 --   reset role;
 --   rollback;
 -- © 2026 Equipo CuidaRed – INTEC.
+-- Catálogo comercial de ejemplo solo para pruebas, después de cargar fase 2a.
+insert into cuidared.plan_categoria (nombre) values ('Básico'), ('Premium') on conflict (nombre) do nothing;
+
+-- Precios referenciales en DOP (D07: precios, moneda y vigencias siguen pendientes). Límite null = ilimitado.
+insert into cuidared.plan (nombre, plan_categoria_id, tipo_cuenta_id, precio, periodicidad, duracion_dias,
+                           limite_envejecientes, limite_usuarios, limite_familiares, resumen)
+select v.nombre, pc.plan_categoria_id, t.tipo_cuenta_id, v.precio, 'mensual', 30, v.env, v.usu, v.fam, v.resumen
+from (values
+  ('Básico Familiar', 'Básico', 'familia', 650, 2, null, 3,
+   'Hasta 2 adultos mayores y 3 familiares, cuidadores sin límite, alertas estándar y visitas recurrentes.'),
+  ('Cuidado Integral', 'Premium', 'familia', 1450, 6, null, null,
+   'Hasta 6 adultos mayores, familiares y cuidadores sin límite, alertas críticas, historial inmutable y métricas.'),
+  ('Operación Base', 'Básico', 'organizacion', 3500, 15, 20, null,
+   'Hasta 15 adultos mayores y 20 miembros, visitas, necesidades diarias y tablón de notificaciones.'),
+  ('Gestión Comunitaria Avanzada', 'Premium', 'organizacion', 8500, null, null, null,
+   'Adultos mayores y equipo sin límite, clasificación de riesgo completa, necesidades institucionales y reportes avanzados.')
+) as v(nombre, categoria, tipo, precio, env, usu, fam, resumen)
+join cuidared.plan_categoria pc on pc.nombre = v.categoria
+join cuidared.tipo_cuenta t on t.codigo = v.tipo
+on conflict (nombre) do nothing;
+
+insert into cuidared.plan_funcionalidad (plan_id, funcionalidad)
+select p.plan_id, f.funcionalidad
+from (values
+  ('Básico Familiar', 'registro_visitas'), ('Básico Familiar', 'necesidades_diarias'), ('Básico Familiar', 'visitas_recurrentes'),
+  ('Cuidado Integral', 'registro_visitas'), ('Cuidado Integral', 'necesidades_diarias'), ('Cuidado Integral', 'visitas_recurrentes'),
+  ('Cuidado Integral', 'alertas_tiempo_real'), ('Cuidado Integral', 'historial_inmutable'), ('Cuidado Integral', 'dashboard_metricas'),
+  ('Operación Base', 'registro_visitas'), ('Operación Base', 'necesidades_diarias'), ('Operación Base', 'tablon_notificaciones'),
+  ('Operación Base', 'dashboard_metricas'),
+  ('Gestión Comunitaria Avanzada', 'registro_visitas'), ('Gestión Comunitaria Avanzada', 'necesidades_diarias'),
+  ('Gestión Comunitaria Avanzada', 'tablon_notificaciones'), ('Gestión Comunitaria Avanzada', 'dashboard_metricas'),
+  ('Gestión Comunitaria Avanzada', 'visitas_recurrentes'), ('Gestión Comunitaria Avanzada', 'alertas_tiempo_real'),
+  ('Gestión Comunitaria Avanzada', 'riesgo_completo'), ('Gestión Comunitaria Avanzada', 'org_necesidad'),
+  ('Gestión Comunitaria Avanzada', 'reportes_avanzados')
+) as f(plan, funcionalidad)
+join cuidared.plan p on p.nombre = f.plan
+on conflict do nothing;
+
 create schema pruebas;
 grant usage on schema pruebas to authenticated, anon;
 

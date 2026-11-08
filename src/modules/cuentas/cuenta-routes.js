@@ -1,25 +1,25 @@
 /* Detalle, configuración y suscripción de la cuenta · ID02/RF-11/RF-19/RF-20. © 2026 Equipo CuidaRed – INTEC. */
 import { Router } from 'express';
 import './cuentas-errors.js';
-import { configuracionDto, detalleCuentaDto, suscripcionDto } from './cuentas-dto.js';
+import { configuracionDto, contextoDto, detalleCuentaDto, suscripcionDto } from './cuentas-dto.js';
 import { createCuentasRepository } from './cuentas-repository.js';
 import {
   actualizarConfiguracionSchema,
   actualizarCuentaSchema,
   parseInput,
 } from './cuentas-schemas.js';
-import { requirePermiso } from './require-cuenta.js';
+import { requireAccesoOperativo, requirePermiso } from './require-cuenta.js';
 
 /*
  * Rutas relativas a /cuentas/:cuentaId (requireCuenta ya resolvió el contexto en res.locals.cuenta).
  * Lectura: cualquier miembro activo, incluso con la cuenta vencida (V2: se conserva el acceso a la cuenta y a la
- * suscripción). Escritura: organizacion:configurar, que tampoco exige acceso operativo. Cada RPC vuelve a autorizar.
+ * suscripción). Configuración y escrituras requieren acceso operativo. Cada RPC vuelve a autorizar.
  */
 export function createCuentaRouter({ audit }) {
   const router = Router({ mergeParams: true });
   const repositorio = (res) => createCuentasRepository(res.locals.access.repository.rpc);
   // El id sale del contexto devuelto por la base (no del parámetro de ruta sin más).
-  const cuentaId = (res) => Number(res.locals.cuenta.cuentaId);
+  const cuentaId = (res) => res.locals.cuenta.cuentaId;
   const registrar = (res, action) =>
     audit({
       requestId: res.locals.requestId,
@@ -32,6 +32,10 @@ export function createCuentaRouter({ audit }) {
     res.json({ data: detalleCuentaDto(await repositorio(res).obtener(cuentaId(res))) });
   });
 
+  router.get('/contexto', (_req, res) => {
+    res.json({ data: contextoDto(res.locals.contextoCuenta) });
+  });
+
   router.patch('/', requirePermiso('organizacion:configurar'), async (req, res) => {
     const datos = parseInput(actualizarCuentaSchema, req.body);
     const actualizada = detalleCuentaDto(await repositorio(res).actualizar(cuentaId(res), datos));
@@ -39,7 +43,7 @@ export function createCuentaRouter({ audit }) {
     res.json({ data: actualizada });
   });
 
-  router.get('/configuracion', async (_req, res) => {
+  router.get('/configuracion', requireAccesoOperativo(), async (_req, res) => {
     res.json({ data: configuracionDto(await repositorio(res).configuracion(cuentaId(res))) });
   });
 

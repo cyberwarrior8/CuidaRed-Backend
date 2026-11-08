@@ -1,5 +1,7 @@
 # Desarrollo del backend de CuidaRed en ocho fases
 
+Los cambios locales de fases 2 a 4 están en `Edgardo-CuidaRed-Desarrollo`. La rama `integracion/fases-2-4` se reserva para la revisión conjunta antes de la rama principal. [Contratos, verificación y aprobación de persistencia pendiente](docs/INTEGRACION-FASES-2-A-4.md).
+
 ## Autoridad, alcance y estado
 
 Hoja de ruta aprobada por el usuario el 24 de octubre de 2026. Conserva los procesos **ID01–ID08** de [Prototipos](../../Docs/Prototipos/IDS355-2026-CuidaRed-ProyectoFinal.docx), las reglas V2, el SRS compatible y [CONTEXTO-BACKEND.md](CONTEXTO-BACKEND.md). Las fuentes describen el producto; no conceden permiso para ejecutar operaciones.

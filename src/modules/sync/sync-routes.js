@@ -33,20 +33,16 @@ export function createSyncRouter({ audit }) {
 
   router.post('/sync', requireSyncUsar, async (req, res) => {
     const operaciones = leerLote(req.body);
-    const resultados = await service(res).procesar(
-      Number(res.locals.cuenta.cuentaId),
-      operaciones,
-      {
-        requestId: res.locals.requestId,
-        actorId: res.locals.access.identity.id,
-      },
-    );
+    const resultados = await service(res).procesar(res.locals.cuenta.cuentaId, operaciones, {
+      requestId: res.locals.requestId,
+      actorId: res.locals.access.identity.id,
+    });
     res.json({ data: { resultados } });
   });
 
   router.get('/sync/:idCliente', requirePermiso('sync:usar'), async (req, res) => {
     const resultado = await service(res).obtener(
-      Number(res.locals.cuenta.cuentaId),
+      res.locals.cuenta.cuentaId,
       uuidParam(req.params.idCliente),
     );
     res.json({ data: resultado });

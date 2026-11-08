@@ -144,7 +144,6 @@ describe('RF-09/RF-11: permisos por rol y tipo de cuenta (V2)', () => {
       '/cuentas/7/miembros/21/cuidador',
       { tipo_cuidado_id: 1, cuidador_independiente: true },
     ],
-    ['post', '/cuentas/7/miembros/21/cuidador/finalizar', undefined],
   ];
 
   it.each([
@@ -168,7 +167,7 @@ describe('RF-09/RF-11: permisos por rol y tipo de cuenta (V2)', () => {
     }
   });
 
-  it.each(mutaciones)(
+  it.each(mutaciones.filter(([, ruta]) => !ruta.endsWith('/cuidador')))(
     'el Coordinador de una Organización NO gestiona miembros: %s %s',
     async (method, path, body) => {
       const { app, rpc, adminGateway } = setup({
@@ -207,12 +206,21 @@ describe('RF-09/RF-11: permisos por rol y tipo de cuenta (V2)', () => {
     await http(app, 'get', '/cuentas/7/miembros/21/cuidador').expect(200, { data: null });
   });
 
-  it('cuenta sin plan vigente: se conserva la gestión de miembros, no la de cuidadores', async () => {
+  it('el Coordinador de una Organización puede gestionar el perfil global, sin gestionar membresías', async () => {
+    const { app } = setup({
+      ctx: contexto({ tipo: 'organizacion', rol: 'coordinador' }),
+      rpc: { api_obtener_cuidador_miembro: async () => null },
+    });
+    await http(app, 'get', '/cuentas/7/miembros/21/cuidador').expect(200, { data: null });
+    await http(app, 'get', '/cuentas/7/miembros/21').expect(403);
+  });
+
+  it('cuenta sin vigencia: bloquea la gestión de miembros y cuidadores', async () => {
     const { app, llamadas } = setup({
       ctx: contexto({ acceso_operativo: false, suscripcion_estado: 'vencida' }),
       rpc: { api_listar_miembros: async () => ({ total: 0, items: [] }) },
     });
-    await http(app, 'get', '/cuentas/7/miembros').expect(200);
+    await http(app, 'get', '/cuentas/7/miembros').expect(403);
     const res = await http(app, 'get', '/cuentas/7/miembros/21/cuidador').expect(403);
     expect(res.body.error.code).toBe('SUBSCRIPTION_INACTIVE');
     expect(llamadas('api_obtener_cuidador_miembro')).toHaveLength(0);
@@ -221,14 +229,14 @@ describe('RF-09/RF-11: permisos por rol y tipo de cuenta (V2)', () => {
   it('una persona con roles distintos en dos cuentas no mezcla permisos', async () => {
     const { app, llamadas } = setup({
       ctx: ({ p_cuenta_id }) =>
-        p_cuenta_id === 7
+        p_cuenta_id === '7'
           ? contexto({ cuenta_id: 7 })
           : contexto({ cuenta_id: 8, tipo: 'organizacion', rol: 'familiar' }),
       rpc: { api_listar_miembros: async () => ({ total: 0, items: [] }) },
     });
     await http(app, 'get', '/cuentas/7/miembros').expect(200);
     await http(app, 'get', '/cuentas/8/miembros').expect(403);
-    expect(llamadas('api_listar_miembros').map(([, p]) => p.p_cuenta_id)).toEqual([7]);
+    expect(llamadas('api_listar_miembros').map(([, p]) => p.p_cuenta_id)).toEqual(['7']);
   });
 });
 
@@ -250,7 +258,7 @@ describe('RF-11: listado y detalle de miembros', () => {
       })
       .expect(200);
     expect(llamadas('api_listar_miembros')[0][1]).toEqual({
-      p_cuenta_id: 7,
+      p_cuenta_id: '7',
       p_rol: 'cuidador',
       p_estado: 'activa',
       p_orden: ['-apellidos', 'membresia_id'],
@@ -347,11 +355,14 @@ describe('RF-11: listado y detalle de miembros', () => {
     const rpc = { api_detalle_miembro: vi.fn(async () => miembro({ cuidador: perfil() })) };
     const { app } = setup({ rpc });
     const res = await http(app, 'get', '/cuentas/7/miembros/21').expect(200);
-    expect(rpc.api_detalle_miembro).toHaveBeenCalledWith({ p_cuenta_id: 7, p_membresia_id: 21 });
+    expect(rpc.api_detalle_miembro).toHaveBeenCalledWith({
+      p_cuenta_id: '7',
+      p_membresia_id: '21',
+    });
     expect(res.body.data.cuidador.tipo_cuidado).toBe('Cuidador remunerado');
   });
 
-  it.each(['0', 'abc', '-1', '1.5', '99999999999999999999', '9007199254740993'])(
+  it.each(['0', 'abc', '-1', '1.5', '99999999999999999999', '9223372036854775808'])(
     'el id de membresía %s no existe (404) y no llega a la base',
     async (id) => {
       const { app, llamadas } = setup({ rpc: { api_detalle_miembro: async () => miembro() } });
@@ -383,7 +394,7 @@ describe('RF-11: invitar miembros', () => {
     expect(adminGateway.inviteUser).not.toHaveBeenCalled();
     // El correo se normaliza; el actor y la identidad de la persona nunca viajan en la petición.
     const esperado = {
-      p_cuenta_id: 7,
+      p_cuenta_id: '7',
       p_correo: 'nuevo.miembro@example.test',
       p_cedula: '00198765432',
       p_rol: 'cuidador',
@@ -559,7 +570,7 @@ describe('RF-11: cambiar rol, desactivar y reactivar', () => {
       .send({ rol: 'familiar' })
       .expect(200);
     expect(rpc.api_cambiar_rol_miembro).toHaveBeenCalledWith(
-      { p_cuenta_id: 7, p_membresia_id: 21, p_rol: 'familiar' },
+      { p_cuenta_id: '7', p_membresia_id: '21', p_rol: 'familiar' },
       expect.any(Object),
     );
     expect(res.body.data).toMatchObject({ membresia_id: '22', rol: 'familiar' });
@@ -622,7 +633,10 @@ describe('RF-11: cambiar rol, desactivar y reactivar', () => {
     const { app, audit } = setup({ rpc });
     const baja = await http(app, 'post', '/cuentas/7/miembros/21/desactivar').expect(200);
     expect(baja.body.data).toMatchObject({ estado: 'inactiva', fecha_fin: '2026-11-06' });
-    expect(rpc.api_desactivar_miembro).toHaveBeenCalledWith({ p_cuenta_id: 7, p_membresia_id: 21 });
+    expect(rpc.api_desactivar_miembro).toHaveBeenCalledWith({
+      p_cuenta_id: '7',
+      p_membresia_id: '21',
+    });
     const alta = await http(app, 'post', '/cuentas/7/miembros/21/reactivar').expect(200);
     expect(alta.body.data).toMatchObject({ membresia_id: '30', estado: 'activa' });
     const acciones = audit.mock.calls.map(([e]) => e.action);
@@ -638,7 +652,6 @@ describe('RF-11: cambiar rol, desactivar y reactivar', () => {
     const { app, llamadas } = setup();
     await http(app, 'post', '/cuentas/7/miembros/21/desactivar').send(body).expect(422);
     await http(app, 'post', '/cuentas/7/miembros/21/reactivar').send(body).expect(422);
-    await http(app, 'post', '/cuentas/7/miembros/21/cuidador/finalizar').send(body).expect(422);
     expect(llamadas('api_desactivar_miembro')).toHaveLength(0);
   });
 
@@ -697,8 +710,8 @@ describe('RF-11: titularidad', () => {
       .send({ membresia_id: 21 })
       .expect(200);
     expect(rpc.api_transferir_titularidad).toHaveBeenCalledWith({
-      p_cuenta_id: 7,
-      p_membresia_id: 21,
+      p_cuenta_id: '7',
+      p_membresia_id: '21',
     });
     // Los identificadores bigint viajan como texto, igual que en el contexto de cuenta.
     expect(res.body.data).toEqual({ ...transferida, cuenta_id: '7', membresia_id: '21' });
@@ -716,8 +729,8 @@ describe('RF-11: titularidad', () => {
     const { app } = setup({ rpc });
     await http(app, 'post', '/cuentas/7/titularidad').send({ membresia_id: '21' }).expect(200);
     expect(rpc.api_transferir_titularidad).toHaveBeenCalledWith({
-      p_cuenta_id: 7,
-      p_membresia_id: 21,
+      p_cuenta_id: '7',
+      p_membresia_id: '21',
     });
   });
 
@@ -779,8 +792,8 @@ describe('RF-12: perfil Cuidador por cuenta', () => {
       cuidador_independiente: false,
     });
     expect(rpc.api_obtener_cuidador_miembro).toHaveBeenCalledWith({
-      p_cuenta_id: 7,
-      p_membresia_id: 21,
+      p_cuenta_id: '7',
+      p_membresia_id: '21',
     });
     await http(app, 'get', '/cuentas/7/miembros/21/cuidador').expect(200, { data: null });
   });
@@ -792,8 +805,8 @@ describe('RF-12: perfil Cuidador por cuenta', () => {
       .send({ tipo_cuidado_id: 2, cuidador_independiente: false })
       .expect(200);
     expect(rpc.api_guardar_cuidador_miembro).toHaveBeenCalledWith({
-      p_cuenta_id: 7,
-      p_membresia_id: 21,
+      p_cuenta_id: '7',
+      p_membresia_id: '21',
       p_tipo_cuidado_id: 2,
       p_cuidador_independiente: false,
     });
@@ -837,20 +850,10 @@ describe('RF-12: perfil Cuidador por cuenta', () => {
     await http(b.app, 'post', '/cuentas/7/miembros/21/cuidador').send(cuerpo).expect(422);
   });
 
-  it('finalizar devuelve el miembro sin perfil vigente; sin perfil que finalizar es 409', async () => {
-    const rpc = {
-      api_finalizar_cuidador_miembro: vi
-        .fn()
-        .mockResolvedValueOnce(miembro({ cuidador: null }))
-        .mockRejectedValueOnce(negocio('CR_ESTADO_INVALIDO')),
-    };
-    const { app, audit } = setup({ rpc });
-    const res = await http(app, 'post', '/cuentas/7/miembros/21/cuidador/finalizar').expect(200);
-    expect(res.body.data.cuidador).toBeNull();
-    expect(audit).toHaveBeenCalledWith(
-      expect.objectContaining({ action: 'cuidador.finalizado', actorId }),
-    );
-    await http(app, 'post', '/cuentas/7/miembros/21/cuidador/finalizar').expect(409);
+  it('una cuenta no puede finalizar un perfil global desde la ruta antigua', async () => {
+    const { app, llamadas } = setup();
+    await http(app, 'post', '/cuentas/7/miembros/21/cuidador/finalizar').expect(404);
+    expect(llamadas('api_finalizar_cuidador_miembro')).toHaveLength(0);
   });
 
   it('la membresía de otra cuenta no existe para el perfil (404)', async () => {
@@ -858,12 +861,10 @@ describe('RF-12: perfil Cuidador por cuenta', () => {
     const rpc = {
       api_obtener_cuidador_miembro: rechaza(notFound),
       api_guardar_cuidador_miembro: rechaza(notFound),
-      api_finalizar_cuidador_miembro: rechaza(notFound),
     };
     const { app } = setup({ rpc });
     await http(app, 'get', '/cuentas/7/miembros/99/cuidador').expect(404);
     await http(app, 'post', '/cuentas/7/miembros/99/cuidador').send(cuerpo).expect(404);
-    await http(app, 'post', '/cuentas/7/miembros/99/cuidador/finalizar').expect(404);
   });
 });
 
@@ -877,7 +878,7 @@ describe('RF-11: aceptar o rechazar la membresía propia', () => {
     expect(res.body.data).toEqual({ ...aceptada, membresia_id: '21', cuenta_id: '7' });
     expect(mock.mock.calls.map(([n]) => n)).toEqual(['api_aceptar_membresia']);
     expect(rpc.api_aceptar_membresia).toHaveBeenCalledWith(
-      { p_membresia_id: 21 },
+      { p_membresia_id: '21' },
       expect.any(Object),
     );
     expect(audit).toHaveBeenCalledWith(
@@ -890,7 +891,7 @@ describe('RF-11: aceptar o rechazar la membresía propia', () => {
     const { app, audit } = setup({ rpc });
     const res = await http(app, 'post', '/me/membresias/21/rechazar').expect(204);
     expect(res.text).toBe('');
-    expect(rpc.api_rechazar_membresia).toHaveBeenCalledWith({ p_membresia_id: 21 });
+    expect(rpc.api_rechazar_membresia).toHaveBeenCalledWith({ p_membresia_id: '21' });
     expect(audit).toHaveBeenCalledWith(
       expect.objectContaining({ action: 'membresia.rechazada', actorId }),
     );
@@ -962,7 +963,7 @@ describe('aislamiento por cuenta y auditoría', () => {
     const rpc = { api_listar_miembros: vi.fn(async () => ({ total: 0, items: [] })) };
     const { app } = setup({ ctx: ({ p_cuenta_id }) => contexto({ cuenta_id: p_cuenta_id }), rpc });
     await http(app, 'get', '/cuentas/9/miembros').expect(200);
-    expect(rpc.api_listar_miembros.mock.calls[0][0].p_cuenta_id).toBe(9);
+    expect(rpc.api_listar_miembros.mock.calls[0][0].p_cuenta_id).toBe('9');
     // Intentar fijar otra cuenta por query o por cuerpo se rechaza.
     await http(app, 'get', '/cuentas/9/miembros').query({ cuenta_id: '7' }).expect(422);
     await http(app, 'post', '/cuentas/9/miembros')

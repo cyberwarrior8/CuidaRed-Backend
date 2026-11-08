@@ -97,6 +97,10 @@ revoke all on cuidared.evaluacion_riesgo from public, anon, authenticated;
 
 /* ───────────── 4. Indicaciones médicas: autoría (RF-15) ───────────── */
 
+insert into cuidared.tipo_indicacion(nombre)
+values ('Medicamento'), ('Cuidado'), ('Consulta'), ('Terapia')
+on conflict (nombre) do nothing;
+
 alter table cuidared.indicacion_medica
   add column if not exists registrado_por uuid references cuidared.usuario(usuario_id),
   add column if not exists actualizado_por uuid references cuidared.usuario(usuario_id);
@@ -289,7 +293,7 @@ $$;
 create function cuidared_interno.seg_factor_json(p_id bigint) returns jsonb
 language sql stable set search_path = '' as $$
   select jsonb_build_object(
-    'envejeciente_riesgo_id', er.envejeciente_riesgo_id,
+    'envejeciente_riesgo_id', er.envejeciente_riesgo_id::text,
     'envejeciente_id', er.envejeciente_id,
     'riesgo_id', er.riesgo_id,
     'riesgo', r.nombre,

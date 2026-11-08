@@ -98,15 +98,16 @@ begin
 end;
 $$;
 
--- Uso de cupo de la cuenta: membresías vigentes (pendiente o activa). Una fila por persona (uq_membresia_vigente).
+-- Los pendientes no reservan plaza. Familiares y voluntarios quedan fuera del cupo de staff.
 create function cuidared_interno.uso_miembros(p_cuenta_id bigint, p_excluir_membresia_id bigint default null) returns jsonb
 language sql stable set search_path = '' as $$
   select jsonb_build_object(
-    'usuarios', count(*) filter (where r.codigo::text <> 'voluntario'),
+    'usuarios', count(*) filter (where r.codigo::text in ('administrador','coordinador','cuidador')),
     'familiares', count(*) filter (where r.codigo::text = 'familiar'))
   from cuidared.membresia m
   join cuidared.rol r on r.rol_id = m.rol_id
-  where m.cuenta_id = p_cuenta_id and m.estado::text in ('pendiente', 'activa')
+  where m.cuenta_id = p_cuenta_id and m.estado::text = 'activa'
+    and m.fecha_inicio <= cuidared_interno.hoy() and (m.fecha_fin is null or m.fecha_fin >= cuidared_interno.hoy())
     and m.membresia_id is distinct from p_excluir_membresia_id
 $$;
 
@@ -121,8 +122,8 @@ language plpgsql stable set search_path = '' as $$
 declare
   v_lim jsonb := cuidared_interno.limites(p_cuenta_id);
   v_uso jsonb := cuidared_interno.uso_miembros(p_cuenta_id, p_excluir_membresia_id);
-  v_cuenta_usuario_nuevo boolean := p_rol_nuevo <> 'voluntario';
-  v_cuenta_usuario_actual boolean := p_rol_actual is not null and p_rol_actual <> 'voluntario';
+  v_cuenta_usuario_nuevo boolean := p_rol_nuevo in ('administrador','coordinador','cuidador');
+  v_cuenta_usuario_actual boolean := coalesce(p_rol_actual in ('administrador','coordinador','cuidador'), false);
 begin
   if v_cuenta_usuario_nuevo and not v_cuenta_usuario_actual and (v_lim->>'usuarios') is not null
      and (v_uso->>'usuarios')::integer + 1 > (v_lim->>'usuarios')::integer then
@@ -134,6 +135,27 @@ begin
   end if;
 end;
 $$;
+
+-- Reemplaza el validador histórico de la base real, que contaba pendientes y todos los roles.
+create or replace function cuidared.fn_trg_membresia_limite() returns trigger
+language plpgsql security definer set search_path = '' as $$
+declare v_rol text; v_rol_anterior text; v_id bigint;
+begin
+  if new.estado <> 'activa' then return new; end if;
+  perform cuidared_interno.bloquear_miembros(new.cuenta_id);
+  select codigo::text into v_rol from cuidared.rol where rol_id = new.rol_id;
+  if tg_op = 'UPDATE' then
+    v_id := old.membresia_id;
+    if old.cuenta_id = new.cuenta_id and old.estado = 'activa' then
+      select codigo::text into v_rol_anterior from cuidared.rol where rol_id = old.rol_id;
+    end if;
+  end if;
+  perform cuidared_interno.exigir_cupo_miembro(new.cuenta_id, v_rol, v_rol_anterior, v_id);
+  return new;
+end $$;
+revoke all on function cuidared.fn_trg_membresia_limite() from public, anon, authenticated;
+create or replace trigger trg_membresia_limite before insert or update of estado, rol_id, cuenta_id
+on cuidared.membresia for each row execute function cuidared.fn_trg_membresia_limite();
 
 /*
  * Valida una invitación y resuelve a la persona por correo. Devuelve {usuario_id (null si no existe), rol_id}.
@@ -178,31 +200,33 @@ begin
     raise exception 'CR_IDENTIDAD_NO_COINCIDE' using errcode = 'P0001';
   end if;
 
-  perform cuidared_interno.exigir_cupo_miembro(p_cuenta_id, p_rol);
   return jsonb_build_object('usuario_id', v_usuario.usuario_id, 'rol_id', v_rol_id);
 end;
 $$;
 
--- Perfil Cuidador vigente de la persona en la cuenta, o null.
+-- Perfil global, visible solo mediante una membresía activa de Cuidador en la cuenta consultada.
 create function cuidared_interno.cuidador_json(p_usuario_id uuid, p_cuenta_id bigint) returns jsonb
 language sql stable set search_path = '' as $$
   select jsonb_build_object(
-    'cuidador_id', cd.cuidador_id,
+    'cuidador_id', cd.cuidador_id::text,
     'tipo_cuidado_id', cd.tipo_cuidado_id,
     'tipo_cuidado', tc.nombre,
     'cuidador_independiente', cd.cuidador_independiente,
-    'usuario_empleador_id', cd.usuario_empleador_id,
+    'usuario_empleador_id', case when exists (
+      select 1 from cuidared_interno.membresia_activa(p_cuenta_id, cd.usuario_empleador_id)
+    ) then cd.usuario_empleador_id end,
     'fecha_inicio', cd.fecha_inicio)
   from cuidared.cuidador cd
   join cuidared.tipo_cuidado tc on tc.tipo_cuidado_id = cd.tipo_cuidado_id
-  where cd.usuario_id = p_usuario_id and cd.cuenta_id = p_cuenta_id and cd.fecha_fin is null
+  where cd.usuario_id = p_usuario_id and cd.fecha_fin is null
+    and exists (select 1 from cuidared_interno.membresia_activa(p_cuenta_id, p_usuario_id) m where m.rol = 'cuidador')
 $$;
 
 -- Fila de miembro (DTO). Solo datos de la persona que ve quien gestiona la cuenta.
 create function cuidared_interno.miembro_json(p_membresia_id bigint) returns jsonb
 language sql stable set search_path = '' as $$
   select jsonb_build_object(
-    'membresia_id', m.membresia_id,
+    'membresia_id', m.membresia_id::text,
     'rol', r.codigo,
     'estado', m.estado,
     'fecha_inicio', m.fecha_inicio,
@@ -357,6 +381,9 @@ begin
   select m.cuenta_id into v_cuenta from cuidared.membresia m where m.membresia_id = p_membresia_id and m.usuario_id = v_uid;
   if not found then raise no_data_found; end if;
   perform cuidared_interno.bloquear_miembros(v_cuenta);
+  if not cuidared_interno.acceso_operativo(v_cuenta) then
+    raise exception 'CR_CUENTA_SIN_ACCESO' using errcode = 'P0001';
+  end if;
   select m.membresia_id, m.cuenta_id, m.estado::text as estado, r.codigo::text as rol
     into v_m
     from cuidared.membresia m join cuidared.rol r on r.rol_id = m.rol_id
@@ -365,12 +392,12 @@ begin
   if v_m.estado <> 'pendiente' then
     raise exception 'CR_ESTADO_INVALIDO' using errcode = 'P0001';
   end if;
-  -- El plan pudo cambiar desde la invitación: la pendiente ya cuenta, se excluye para no contarla dos veces.
+  -- La invitación no reserva plaza. El cupo se comprueba al activar la membresía.
   perform cuidared_interno.exigir_cupo_miembro(v_m.cuenta_id, v_m.rol, null, v_m.membresia_id);
   update cuidared.membresia
      set estado = 'activa', fecha_inicio = cuidared_interno.hoy(), fecha_fin = null, fecha_actualizacion = now()
    where membresia_id = v_m.membresia_id;
-  return jsonb_build_object('membresia_id', v_m.membresia_id, 'cuenta_id', v_m.cuenta_id, 'rol', v_m.rol, 'estado', 'activa');
+  return jsonb_build_object('membresia_id', v_m.membresia_id::text, 'cuenta_id', v_m.cuenta_id::text, 'rol', v_m.rol, 'estado', 'activa');
 end;
 $$;
 
@@ -385,6 +412,9 @@ begin
   select m.cuenta_id into v_cuenta from cuidared.membresia m where m.membresia_id = p_membresia_id and m.usuario_id = v_uid;
   if not found then raise no_data_found; end if;
   perform cuidared_interno.bloquear_miembros(v_cuenta);
+  if not cuidared_interno.acceso_operativo(v_cuenta) then
+    raise exception 'CR_CUENTA_SIN_ACCESO' using errcode = 'P0001';
+  end if;
   select m.estado::text into v_estado from cuidared.membresia m
     where m.membresia_id = p_membresia_id and m.usuario_id = v_uid for update;
   if v_estado <> 'pendiente' then
@@ -455,10 +485,6 @@ begin
      and tv.codigo::text is distinct from case p_rol when 'cuidador' then 'cuidador_asignado'
                                                      when 'voluntario' then 'voluntario_asignado'
                                                      when 'familiar' then 'familiar_responsable' end;
-  if v_m.rol = 'cuidador' then
-    update cuidared.cuidador set fecha_fin = cuidared_interno.hoy()
-     where usuario_id = v_m.usuario_id and cuenta_id = p_cuenta_id and fecha_fin is null;
-  end if;
   return cuidared_interno.miembro_json(v_nueva);
 end;
 $$;
@@ -564,11 +590,19 @@ begin
   if v_m.usuario_id = (v_ctx->>'usuario_id')::uuid or v_m.estado <> 'activa' or v_m.usuario_estado <> 'activo' then
     raise exception 'CR_ESTADO_INVALIDO' using errcode = 'P0001';
   end if;
-  if not cuidared_interno.rol_gestor(v_m.rol_id, v_m.tipo_cuenta_id) then
+  if not exists (select 1 from cuidared_interno.membresia_activa(p_cuenta_id, v_m.usuario_id) m
+                 where cuidared_interno.rol_gestor(m.rol_id, m.tipo_cuenta_id)) then
     raise exception 'CR_DESTINO_NO_GESTOR' using errcode = 'P0001';
   end if;
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('cuidared.registrar_cuenta:' || v_m.usuario_id::text, 0));
+  if exists (select 1 from cuidared.cuenta c where c.cuenta_id = p_cuenta_id and c.suscripcion_estado = 'prueba'
+             and cuidared_interno.acceso_operativo(c.cuenta_id))
+     and exists (select 1 from cuidared.cuenta c where c.usuario_titular_id = v_m.usuario_id
+                 and c.suscripcion_estado = 'prueba' and cuidared_interno.acceso_operativo(c.cuenta_id)) then
+    raise exception 'CR_PRUEBA_EN_CURSO' using errcode = 'P0001';
+  end if;
   update cuidared.cuenta set usuario_titular_id = v_m.usuario_id, fecha_actualizacion = now() where cuenta_id = p_cuenta_id;
-  return jsonb_build_object('cuenta_id', p_cuenta_id, 'usuario_titular_id', v_m.usuario_id, 'membresia_id', p_membresia_id);
+  return jsonb_build_object('cuenta_id', p_cuenta_id::text, 'usuario_titular_id', v_m.usuario_id, 'membresia_id', p_membresia_id::text);
 end;
 $$;
 
@@ -586,7 +620,7 @@ begin
 end;
 $$;
 
--- Crea o actualiza el perfil vigente (uno por persona y cuenta). Solo para miembros con rol cuidador.
+-- Crea o actualiza el perfil global. Solo para una membresía activa con rol Cuidador.
 create function cuidared_api.api_guardar_cuidador_miembro(
   p_cuenta_id bigint, p_membresia_id bigint, p_tipo_cuidado_id smallint, p_cuidador_independiente boolean
 ) returns jsonb
@@ -607,40 +641,83 @@ begin
   if v_m.rol <> 'cuidador' then
     raise exception 'CR_NO_ES_CUIDADOR' using errcode = 'P0001';
   end if;
-  if v_m.estado not in ('pendiente', 'activa') then
+  if not exists (select 1 from cuidared_interno.membresia_activa(p_cuenta_id, v_m.usuario_id) m
+                 where m.membresia_id = p_membresia_id and m.rol = 'cuidador') then
     raise exception 'CR_ESTADO_INVALIDO' using errcode = 'P0001';
   end if;
   if not exists (select 1 from cuidared.tipo_cuidado t where t.tipo_cuidado_id = p_tipo_cuidado_id) then
     raise invalid_parameter_value;
   end if;
-  insert into cuidared.cuidador (usuario_id, cuenta_id, tipo_cuidado_id, fecha_inicio, cuidador_independiente, usuario_empleador_id)
-  values (v_m.usuario_id, p_cuenta_id, p_tipo_cuidado_id, cuidared_interno.hoy(), p_cuidador_independiente,
+  insert into cuidared.cuidador (usuario_id, tipo_cuidado_id, fecha_inicio, cuidador_independiente, usuario_empleador_id)
+  values (v_m.usuario_id, p_tipo_cuidado_id, cuidared_interno.hoy(), p_cuidador_independiente,
           case when p_cuidador_independiente then null else v_m.usuario_titular_id end)
-  on conflict (usuario_id, cuenta_id) where fecha_fin is null do update set
+  on conflict (usuario_id) do update set
     tipo_cuidado_id = excluded.tipo_cuidado_id,
     cuidador_independiente = excluded.cuidador_independiente,
-    usuario_empleador_id = excluded.usuario_empleador_id;
+    usuario_empleador_id = excluded.usuario_empleador_id,
+    fecha_fin = null;
   return cuidared_interno.cuidador_json(v_m.usuario_id, p_cuenta_id);
 end;
 $$;
 
--- Finaliza el perfil vigente (fecha_fin = hoy). Devuelve la fila de miembro, ya sin perfil vigente.
-create function cuidared_api.api_finalizar_cuidador_miembro(p_cuenta_id bigint, p_membresia_id bigint) returns jsonb
-language plpgsql security definer set search_path = '' as $$
-declare v_usuario uuid;
+-- Directorio mínimo y paginado para elegir participantes, asignaciones y cuidadores.
+create function cuidared_api.api_candidatos_cuenta(
+  p_cuenta_id bigint, p_uso text, p_offset bigint, p_limit integer, p_orden jsonb
+) returns jsonb language plpgsql security definer set search_path = '' as $$
+declare
+  v_permiso text;
+  v_roles text[];
+  v_item jsonb;
+  v_campo text;
+  v_direccion text;
+  v_orden text := '';
+  v_resultado jsonb;
 begin
-  perform cuidared_interno.exigir_miembros(p_cuenta_id, 'cuidadores:gestionar');
-  if p_membresia_id is null or p_membresia_id <= 0 then raise invalid_parameter_value; end if;
-  select m.usuario_id into v_usuario from cuidared.membresia m where m.membresia_id = p_membresia_id and m.cuenta_id = p_cuenta_id;
-  if not found then raise no_data_found; end if;
-  update cuidared.cuidador set fecha_fin = cuidared_interno.hoy()
-   where usuario_id = v_usuario and cuenta_id = p_cuenta_id and fecha_fin is null;
-  if not found then
-    raise exception 'CR_ESTADO_INVALIDO' using errcode = 'P0001'; -- no hay perfil vigente que finalizar
+  case p_uso
+    when 'visita' then v_permiso := 'visitas:programar'; v_roles := array['coordinador','cuidador','voluntario'];
+    when 'asignacion' then v_permiso := 'adultos:asignar'; v_roles := array['cuidador','voluntario'];
+    when 'familiar' then v_permiso := 'familiares:autorizar'; v_roles := array['familiar'];
+    when 'agenda' then v_permiso := 'agenda:gestionar'; v_roles := array['cuidador'];
+    when 'cuidado' then v_permiso := 'cuidadores:gestionar'; v_roles := array['cuidador'];
+    when 'titularidad' then v_permiso := 'usuarios:gestionar'; v_roles := array['administrador','coordinador'];
+    else raise invalid_parameter_value;
+  end case;
+  perform cuidared_interno.exigir(p_cuenta_id, v_permiso);
+  if p_uso = 'visita' then perform cuidared_interno.exigir(p_cuenta_id, 'visitas:autorizar'); end if;
+  if p_uso = 'titularidad' and not exists (
+    select 1 from cuidared.cuenta where cuenta_id = p_cuenta_id and usuario_titular_id = auth.uid()
+  ) then raise insufficient_privilege; end if;
+  if p_offset is null or p_offset < 0 or p_limit is null or p_limit not between 1 and 100
+     or jsonb_typeof(p_orden) is distinct from 'array' or jsonb_array_length(p_orden) > 2 then
+    raise invalid_parameter_value;
   end if;
-  return cuidared_interno.miembro_json(p_membresia_id);
-end;
-$$;
+  for v_item in select value from jsonb_array_elements(p_orden) loop
+    v_campo := v_item->>'field';
+    v_direccion := v_item->>'direction';
+    if v_campo is null or v_campo not in ('nombre','usuario_id') or
+       v_direccion is null or v_direccion not in ('asc','desc') then raise invalid_parameter_value; end if;
+    v_orden := v_orden || format('%I %s, ', v_campo, v_direccion);
+  end loop;
+  execute format($q$
+    with candidatos as (
+      select u.usuario_id, u.nombres || ' ' || u.apellidos as nombre, m.rol,
+             m.membresia_id::text as membresia_id, c.cuidador_id::text as cuidador_id
+      from cuidared.membresia x join cuidared.usuario u on u.usuario_id = x.usuario_id
+      join lateral cuidared_interno.membresia_activa($1, u.usuario_id) m on m.membresia_id = x.membresia_id
+      left join cuidared.cuidador c on c.usuario_id = u.usuario_id and c.fecha_fin is null
+      where x.cuenta_id = $1 and m.rol = any($2) and ($3 <> 'agenda' or c.cuidador_id is not null)
+        and ($3 <> 'titularidad' or (u.usuario_id <> auth.uid() and cuidared_interno.rol_gestor(m.rol_id,m.tipo_cuenta_id)))
+    ), pagina as (
+      select *, row_number() over (order by %1$s usuario_id) as rn
+      from candidatos order by %1$s usuario_id limit $4 offset $5
+    )
+    select jsonb_build_object('items', coalesce((select jsonb_agg(to_jsonb(p) - 'rn' order by rn) from pagina p), '[]'::jsonb),
+                              'total', (select count(*) from candidatos))
+  $q$, v_orden) into v_resultado using p_cuenta_id, v_roles, p_uso, p_limit, p_offset;
+  return v_resultado;
+end $$;
+revoke all on function cuidared_api.api_candidatos_cuenta(bigint,text,bigint,integer,jsonb) from public, anon;
+grant execute on function cuidared_api.api_candidatos_cuenta(bigint,text,bigint,integer,jsonb) to authenticated;
 
 /* ───────────── 9. Permisos de las RPC ───────────── */
 
@@ -656,8 +733,7 @@ revoke all on function
   cuidared_api.api_reactivar_miembro(bigint, bigint),
   cuidared_api.api_transferir_titularidad(bigint, bigint),
   cuidared_api.api_obtener_cuidador_miembro(bigint, bigint),
-  cuidared_api.api_guardar_cuidador_miembro(bigint, bigint, smallint, boolean),
-  cuidared_api.api_finalizar_cuidador_miembro(bigint, bigint)
+  cuidared_api.api_guardar_cuidador_miembro(bigint, bigint, smallint, boolean)
   from public, anon;
 grant execute on function
   cuidared_api.api_listar_miembros(bigint, text, text, jsonb, integer, integer),
@@ -671,8 +747,7 @@ grant execute on function
   cuidared_api.api_reactivar_miembro(bigint, bigint),
   cuidared_api.api_transferir_titularidad(bigint, bigint),
   cuidared_api.api_obtener_cuidador_miembro(bigint, bigint),
-  cuidared_api.api_guardar_cuidador_miembro(bigint, bigint, smallint, boolean),
-  cuidared_api.api_finalizar_cuidador_miembro(bigint, bigint)
+  cuidared_api.api_guardar_cuidador_miembro(bigint, bigint, smallint, boolean)
   to authenticated;
 
 commit;

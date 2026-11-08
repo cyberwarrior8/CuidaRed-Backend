@@ -1,7 +1,7 @@
 /* Contratos de entrada de la sincronización de visitas sin conexión · RF-10, RF-4.5, RNF-4.2. © 2026 Equipo CuidaRed – INTEC. */
 import { z } from 'zod';
 import { AppError } from '../../lib/errors.js';
-import { sinNulos, visitaRealizadaSchema } from '../visitas/visitas-schemas.js';
+import { registrarVisitaSchema, sinNulos } from '../visitas/visitas-schemas.js';
 
 // Propuesta técnica (D16): lote de hasta 25 operaciones, el tamaño que ya usa el cliente (TAMANO_LOTE).
 export const MAX_OPERACIONES = 25;
@@ -46,12 +46,12 @@ const operacionSchema = z.strictObject({
 
 /*
  * Datos por entidad y tipo (punto de extensión: la fase 5 agrega `necesidad`). Cada esquema es el de la API en línea:
- * `registrar` equivale a POST /visitas/realizada sin `visita_id` (el id de la visita es `registro_id`) e `iniciar` a
+ * `registrar` equivale a POST /visitas/:id/registrar (el id ya programado es `registro_id`) e `iniciar` a
  * POST /visitas/:id/iniciar, que no lleva datos.
  */
 const ENTIDADES = Object.freeze({
   visita: Object.freeze({
-    registrar: visitaRealizadaSchema.omit({ visita_id: true }),
+    registrar: registrarVisitaSchema,
     iniciar: z.strictObject({}),
   }),
 });

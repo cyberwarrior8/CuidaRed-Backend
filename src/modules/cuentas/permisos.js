@@ -151,15 +151,11 @@ export const AJUSTES_POR_TIPO = {
       'catalogos:ver',
     ],
   },
-  organizacion: {},
+  organizacion: { coordinador: ['cuidadores:gestionar'] },
 };
 
 /** Acciones que se permiten aunque la cuenta no tenga acceso operativo (V2: solo cuenta y suscripción). */
-export const ACCIONES_SIN_ACCESO_OPERATIVO = [
-  'cuenta:suscripcion',
-  'organizacion:configurar',
-  'usuarios:gestionar',
-];
+export const ACCIONES_SIN_ACCESO_OPERATIVO = ['cuenta:suscripcion'];
 
 export function permisosDe(rol, tipo) {
   if (!ROLES_POR_TIPO[tipo]?.includes(rol)) return [];

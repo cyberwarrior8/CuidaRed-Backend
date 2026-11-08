@@ -44,7 +44,7 @@ const registrar = (extra = {}) => ({
   entidad: 'visita',
   tipo: 'registrar',
   registro_id: ID.visita,
-  datos: { detalles: [detalle()], checklist: ['higiene'], fecha: '2026-11-06' },
+  datos: { detalles: [detalle()], checklist: ['higiene'] },
   actualizado_en: MARCA,
   base_actualizado_en: BASE,
   ...extra,
@@ -174,9 +174,9 @@ describe('POST /sync: lote de operaciones', () => {
     });
     const llamadas = s.rpcLlamadas(APLICAR);
     expect(llamadas).toHaveLength(2);
-    expect(llamadas[0].cuerpo).toEqual({ p_cuenta_id: 7, p_operacion: registrar() });
+    expect(llamadas[0].cuerpo).toEqual({ p_cuenta_id: '7', p_operacion: registrar() });
     // Sin base: la clave no viaja (no se envían nulos).
-    expect(llamadas[1].cuerpo).toEqual({ p_cuenta_id: 7, p_operacion: iniciar() });
+    expect(llamadas[1].cuerpo).toEqual({ p_cuenta_id: '7', p_operacion: iniciar() });
     expect(Object.keys(llamadas[1].cuerpo.p_operacion)).not.toContain('base_actualizado_en');
   });
 
@@ -503,7 +503,6 @@ describe('POST /sync: validación', () => {
           detalles: [{ ...detalle(), estado_general: null }],
           checklist: null,
           hora_inicio: null,
-          fecha: null,
         },
       }),
     ]).expect(200);
@@ -696,7 +695,7 @@ describe('GET /sync/:idCliente: resultado de una operación propia', () => {
         procesada_en: '2026-11-06T16:00:01.000Z',
       },
     });
-    expect(s.rpcLlamadas(OBTENER)[0].cuerpo).toEqual({ p_cuenta_id: 7, p_id_cliente: ID.op1 });
+    expect(s.rpcLlamadas(OBTENER)[0].cuerpo).toEqual({ p_cuenta_id: '7', p_id_cliente: ID.op1 });
   });
 
   it('un identificador que no es UUID es 404 sin consultar la base', async () => {

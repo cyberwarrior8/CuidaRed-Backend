@@ -22,12 +22,9 @@
 --   · Privacidad: la cédula y el teléfono del visitante viven solo en cuidared.solicitud_visita (RLS, sin acceso directo) y
 --     solo los ven quienes autorizan; nunca se copian a visita.notas ni a ninguna otra tabla.
 --
--- EXPOSICIÓN QUE REQUIERE APROBACIÓN: las RPC cuidared_api.api_publico_* se conceden a `anon` (personas sin sesión). Para
--- ello esta propuesta concede USAGE del esquema cuidared_api a `anon`; ninguna otra función de ese esquema es ejecutable
--- por `anon` (todas hacen revoke ... from public, anon). La prueba pruebas-4a-solicitudes.sql lo verifica.
+-- Las solicitudes externas quedan aisladas. No se conceden privilegios para las RPC públicas.
 begin;
 
-grant usage on schema cuidared_api to anon;
 
 /* ───────────── 1. Solicitudes de visita de personas externas ───────────── */
 
@@ -93,7 +90,7 @@ alter table cuidared.visita
   add column checklist text[] not null default '{}'::text[],
   add column notas text check (notas is null or length(notas) <= 300),
   add column origen character varying not null default 'interna'
-    check (origen::text in ('interna', 'solicitud', 'sin_programar')),
+    check (origen::text in ('interna', 'solicitud')),
   add column solicitud_visita_id uuid;
 
 alter table cuidared.visita
@@ -302,8 +299,7 @@ language sql stable set search_path = '' as $$
     and m.fecha_inicio <= cuidared_interno.hoy() and (m.fecha_fin is null or m.fecha_fin >= cuidared_interno.hoy())
 $$;
 
--- ¿Puede el usuario ver la visita? Gestores: todas las de la cuenta. Cuidador y Voluntario: en las que participan o con
--- algún adulto que alcanzan. Familiar: con algún adulto autorizado. Otra cuenta o inexistente: no (igual que inexistente).
+-- Los gestores ven las visitas de su cuenta. Los demás roles requieren alcance vigente sobre algún adulto.
 create function cuidared_interno.visita_visible(p_cuenta_id bigint, p_visita_id uuid, p_usuario_id uuid) returns boolean
 language sql stable set search_path = '' as $$
   select exists (
@@ -312,14 +308,13 @@ language sql stable set search_path = '' as $$
     join cuidared_interno.membresia_activa(p_cuenta_id, p_usuario_id) m on true
     where v.visita_id = p_visita_id and v.cuenta_id = p_cuenta_id
       and (m.rol in ('administrador', 'coordinador')
-        or exists (select 1 from cuidared.registro_visita r where r.visita_id = v.visita_id and r.usuario_id = p_usuario_id)
         or exists (select 1 from cuidared.detalle_visita d where d.visita_id = v.visita_id
                    and cuidared_interno.alcanza_envejeciente(p_cuenta_id, d.envejeciente_id, p_usuario_id))))
 $$;
 
 /*
- * Quien opera (inicia o registra) una visita: tiene visitas:registrar y, siendo Cuidador o Voluntario, participa en ella;
- * el gestor con visitas:registrar (Coordinador) puede operar cualquiera de la cuenta. Orden de errores: 42501 sin
+ * Quien inicia o registra tiene visitas:registrar, fue autorizado como participante y alcanza a todos los adultos.
+ * Orden de errores: 42501 sin
  * membresía/permiso; P0002 si no la ve (otra cuenta, inexistente o fuera de su alcance); CR_NO_PARTICIPA si la ve pero no
  * participa; CR_CUENTA_SIN_ACCESO si la cuenta no tiene prueba/plan vigente.
  */
@@ -337,9 +332,15 @@ begin
   if not cuidared_interno.visita_visible(p_cuenta_id, p_visita_id, p_usuario_id) then
     raise no_data_found;
   end if;
-  if v_m.rol not in ('administrador', 'coordinador')
-     and not exists (select 1 from cuidared.registro_visita r where r.visita_id = p_visita_id and r.usuario_id = p_usuario_id) then
+  if not exists (select 1 from cuidared.registro_visita r join cuidared.visita v using (visita_id)
+                  where r.visita_id = p_visita_id and r.usuario_id = p_usuario_id
+                    and r.autorizada_por_usuario_id is not null and v.hora_programada is not null) then
     raise exception 'CR_NO_PARTICIPA' using errcode = 'P0001';
+  end if;
+  if not exists (select 1 from cuidared.detalle_visita d where d.visita_id = p_visita_id)
+     or exists (select 1 from cuidared.detalle_visita d where d.visita_id = p_visita_id
+                and not cuidared_interno.alcanza_envejeciente(p_cuenta_id, d.envejeciente_id, p_usuario_id)) then
+    raise insufficient_privilege;
   end if;
 end $$;
 
@@ -486,17 +487,15 @@ end $$;
  *   p_cuenta_id  cuenta de la visita.
  *   p_usuario_id quien registra. La sesión ya fue autenticada por el llamador (exigir o exigir de sync); aquí se
  *                revalidan membresía activa, visitas:registrar, acceso operativo, alcance y participación.
- *   p_visita_id  id de la visita. Si existe en la cuenta (programada o en curso) se completa; si no existe se crea una
- *                visita realizada sin programar con ESE id (el que generó el cliente, para que un reintento no duplique);
- *                null genera un id nuevo.
+ *   p_visita_id  id de una visita existente, programada y autorizada para el actor.
  *   p_datos      {detalles:[{envejeciente_id, estado_general?, observacion}], checklist?, hora_inicio?, hora_fin?,
- *                 fecha?, razon?}. `fecha` (por defecto hoy, no futura) y `razon` solo se usan al crear. Los detalles deben
+ *                 }. Los detalles deben
  *                cubrir todos los adultos de la visita (1 a 4); estado_general es obligatorio salvo para el Voluntario
  *                (registro mínimo) y la observación siempre (3 a 1000 caracteres).
  *
  * Idempotente respecto de p_visita_id: si la visita ya está completada devuelve ya_registrada = true sin modificarla. Una
- * visita cancelada → CR_VISITA_CERRADA. Un id que pertenece a otra cuenta → CR_CONFLICTO (sin revelar nada más).
- * Devuelve {visita_id, creada, ya_registrada, estado}. Si algún adulto queda en situación crítica notifica a los gestores
+ * visita cancelada → CR_VISITA_CERRADA. Inexistente o de otra cuenta → P0002.
+ * Devuelve {visita_id, ya_registrada, estado}. Si algún adulto queda en situación crítica notifica a los gestores
  * (solo la primera vez, no en las repeticiones).
  */
 create function cuidared_interno.registrar_visita_realizada(p_cuenta_id bigint, p_usuario_id uuid, p_visita_id uuid, p_datos jsonb)
@@ -504,12 +503,10 @@ returns jsonb language plpgsql set search_path = '' as $$
 declare
   v_m record;
   v_v cuidared.visita;
-  v_existe boolean;
   v_id uuid;
   v_hoy date := cuidared_interno.hoy();
   v_ahora time := cuidared_interno.hora_local();
   v_fecha date;
-  v_razon text;
   v_ini time;
   v_fin time;
   v_ini_p time;
@@ -522,10 +519,10 @@ declare
   v_env uuid;
   v_eg text;
   v_obs text;
-  v_estado_adulto text;
 begin
-  if p_cuenta_id is null or p_cuenta_id <= 0 or p_usuario_id is null or jsonb_typeof(p_datos) is distinct from 'object'
-     or p_datos - array['fecha', 'razon', 'hora_inicio', 'hora_fin', 'checklist', 'detalles'] <> '{}'::jsonb then
+  if p_cuenta_id is null or p_cuenta_id <= 0 or p_usuario_id is null or p_visita_id is null
+     or jsonb_typeof(p_datos) is distinct from 'object'
+     or p_datos - array['hora_inicio', 'hora_fin', 'checklist', 'detalles'] <> '{}'::jsonb then
     raise invalid_parameter_value;
   end if;
   select * into v_m from cuidared_interno.membresia_activa(p_cuenta_id, p_usuario_id);
@@ -575,18 +572,14 @@ begin
   v_ini_p := cuidared_interno.v_hora(p_datos->'hora_inicio', false);
   v_fin_p := cuidared_interno.v_hora(p_datos->'hora_fin', false);
 
-  v_id := coalesce(p_visita_id, gen_random_uuid());
-  -- Serializa los reintentos con el mismo id: el segundo ve la visita ya creada y responde ya_registrada.
+  v_id := p_visita_id;
   perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(v_id::text, 0));
   v_v := cuidared_interno.bloquear_visita(v_id);
-  v_existe := v_v.visita_id is not null;
-  if v_existe and v_v.cuenta_id is distinct from p_cuenta_id then
-    raise exception 'CR_CONFLICTO' using errcode = 'P0001';
+  if v_v.visita_id is null or v_v.cuenta_id is distinct from p_cuenta_id then
+    raise no_data_found;
   end if;
 
-  if v_existe then
-    -- Completar una visita existente.
-    perform cuidared_interno.exigir_operar_visita(p_cuenta_id, v_id, p_usuario_id);
+  perform cuidared_interno.exigir_operar_visita(p_cuenta_id, v_id, p_usuario_id);
     if v_v.estado::text = 'completada' then
       return jsonb_build_object('visita_id', v_id, 'creada', false, 'ya_registrada', true, 'estado', 'completada');
     end if;
@@ -601,32 +594,12 @@ begin
        is distinct from (select array_agg(x order by x) from unnest(v_ids) as x) then
       raise invalid_parameter_value;
     end if;
-    foreach v_env in array v_ids loop
-      if not cuidared_interno.alcanza_envejeciente(p_cuenta_id, v_env, p_usuario_id) then
-        raise insufficient_privilege;
-      end if;
-    end loop;
-    v_fecha := v_v.fecha;
-  else
-    -- Visita realizada sin programar (origen sin_programar): personal de campo para adultos que alcanza.
-    v_fecha := coalesce(cuidared_interno.v_fecha(p_datos->'fecha', false), v_hoy);
-    if v_fecha > v_hoy then raise invalid_parameter_value; end if;
-    v_razon := coalesce(cuidared_interno.v_texto(p_datos->'razon', 3, 120, false), 'Visita de seguimiento');
-    foreach v_env in array v_ids loop
-      if not cuidared_interno.alcanza_envejeciente(p_cuenta_id, v_env, p_usuario_id) then
-        raise insufficient_privilege;
-      end if;
-      select e.estado into v_estado_adulto from cuidared.envejeciente e where e.envejeciente_id = v_env;
-      if v_estado_adulto <> 'activo' then
-        raise exception 'CR_ESTADO_INVALIDO' using errcode = 'P0001';
-      end if;
-    end loop;
-  end if;
+  v_fecha := v_v.fecha;
 
   -- Horas: las indicadas; si faltan, el inicio registrado (o programado) y, si la visita es de hoy, la hora actual.
   v_fin := coalesce(v_fin_p, case when v_fecha = v_hoy then v_ahora end);
-  v_ini := coalesce(v_ini_p, case when v_existe then v_v.hora_inicio end);
-  if v_ini is null and v_existe and v_v.hora_programada is not null
+  v_ini := coalesce(v_ini_p, v_v.hora_inicio);
+  if v_ini is null and v_v.hora_programada is not null
      and (v_fin is null or v_v.hora_programada <= v_fin) then
     v_ini := v_v.hora_programada;
   end if;
@@ -635,7 +608,6 @@ begin
     raise invalid_parameter_value;
   end if;
 
-  if v_existe then
     update cuidared.visita
       set estado = 'completada', hora_inicio = v_ini, hora_fin = v_fin, checklist = v_checklist, fecha_actualizacion = now()
       where visita_id = v_id;
@@ -643,22 +615,12 @@ begin
       set estado_general = x.estado_general, observacion = x.observacion, registrado_por = p_usuario_id, fecha_registro = now()
       from jsonb_to_recordset(v_detalles) as x(envejeciente_id uuid, estado_general text, observacion text)
       where d.visita_id = v_id and d.envejeciente_id = x.envejeciente_id;
-    -- Si nació de una solicitud externa, el disparador trg_visita_sincroniza_solicitud la pasa a realizada.
-  else
-    insert into cuidared.visita (visita_id, cuenta_id, fecha, hora_inicio, hora_fin, razon, estado, origen, creada_por, checklist)
-      values (v_id, p_cuenta_id, v_fecha, v_ini, v_fin, v_razon, 'completada', 'sin_programar', p_usuario_id, v_checklist);
-    -- Sin autorización previa (autorizada_por_usuario_id nulo): queda constancia de que no se programó.
-    insert into cuidared.registro_visita (visita_id, usuario_id, autorizada_por_usuario_id) values (v_id, p_usuario_id, null);
-    insert into cuidared.detalle_visita (visita_id, envejeciente_id, estado_general, observacion, registrado_por, fecha_registro)
-      select v_id, x.envejeciente_id, x.estado_general, x.observacion, p_usuario_id, now()
-      from jsonb_to_recordset(v_detalles) as x(envejeciente_id uuid, estado_general text, observacion text);
-  end if;
 
   if exists (select 1 from jsonb_to_recordset(v_detalles) as x(envejeciente_id uuid, estado_general text, observacion text)
              where x.estado_general = 'situacion_critica') then
     perform cuidared_interno.notificar_situacion_critica(p_cuenta_id, v_id, p_usuario_id);
   end if;
-  return jsonb_build_object('visita_id', v_id, 'creada', not v_existe, 'ya_registrada', false, 'estado', 'completada');
+  return jsonb_build_object('visita_id', v_id, 'ya_registrada', false, 'estado', 'completada');
 end $$;
 
 /* ───────────── 6. RPC de cuenta (cuidared_api) ───────────── */
@@ -881,35 +843,6 @@ begin
   end if;
   v_res := cuidared_interno.registrar_visita_realizada(p_cuenta_id, v_uid, p_visita_id, p_datos - 'visita_id');
   return cuidared_interno.visita_json(p_visita_id, v_uid, true);
-end $$;
-
-/*
- * Visita no programada registrada directamente por personal de campo, ya completada (origen sin_programar), para adultos que
- * alcanza. Cuerpo: {visita_id? (uuid del cliente: un reintento con el mismo id no duplica), fecha?, razon?, detalles,
- * checklist?, hora_inicio?, hora_fin?}. Devuelve {creada, visita}.
- */
-create function cuidared_api.api_registrar_visita_realizada(p_cuenta_id bigint, p_datos jsonb) returns jsonb
-language plpgsql security definer set search_path = '' as $$
-declare v_ctx jsonb; v_uid uuid; v_id uuid; v_res jsonb;
-begin
-  if p_cuenta_id is null or p_cuenta_id <= 0 then raise invalid_parameter_value; end if;
-  v_ctx := cuidared_interno.exigir(p_cuenta_id, 'visitas:registrar');
-  v_uid := (v_ctx->>'usuario_id')::uuid;
-  if jsonb_typeof(p_datos) is distinct from 'object'
-     or p_datos - array['visita_id', 'fecha', 'razon', 'hora_inicio', 'hora_fin', 'checklist', 'detalles'] <> '{}'::jsonb then
-    raise invalid_parameter_value;
-  end if;
-  v_id := cuidared_interno.v_uuid(p_datos->'visita_id', false);
-  -- Solo se repite una visita sin programar de la misma cuenta creada por la misma persona; cualquier otro id es conflicto.
-  if v_id is not null and exists (
-       select 1 from cuidared.visita v
-       where v.visita_id = v_id
-         and (v.cuenta_id is distinct from p_cuenta_id or v.origen::text <> 'sin_programar' or v.creada_por is distinct from v_uid)) then
-    raise exception 'CR_CONFLICTO' using errcode = 'P0001';
-  end if;
-  v_id := coalesce(v_id, gen_random_uuid());
-  v_res := cuidared_interno.registrar_visita_realizada(p_cuenta_id, v_uid, v_id, p_datos - 'visita_id');
-  return jsonb_build_object('creada', (v_res->>'creada')::boolean, 'visita', cuidared_interno.visita_json(v_id, v_uid, true));
 end $$;
 
 -- Cancela una visita programada o en curso (visitas:programar). Si nació de una solicitud, esta pasa a cancelada (disparador).
@@ -1233,7 +1166,6 @@ revoke all on function
   cuidared_api.api_programar_visita(bigint, jsonb),
   cuidared_api.api_iniciar_visita(bigint, uuid),
   cuidared_api.api_registrar_visita(bigint, uuid, jsonb),
-  cuidared_api.api_registrar_visita_realizada(bigint, jsonb),
   cuidared_api.api_cancelar_visita(bigint, uuid, text),
   cuidared_api.api_listar_solicitudes_visita(bigint, jsonb, jsonb, integer, integer),
   cuidared_api.api_autorizar_solicitud_visita(bigint, uuid, jsonb),
@@ -1242,7 +1174,7 @@ revoke all on function
   cuidared_api.api_publico_crear_solicitud(jsonb),
   cuidared_api.api_publico_consultar_solicitud(text),
   cuidared_api.api_publico_registrar_observacion(text, text)
-  from public, anon;
+  from public, anon, authenticated;
 
 grant execute on function
   cuidared_api.api_listar_visitas(bigint, jsonb, jsonb, integer, integer),
@@ -1250,19 +1182,10 @@ grant execute on function
   cuidared_api.api_programar_visita(bigint, jsonb),
   cuidared_api.api_iniciar_visita(bigint, uuid),
   cuidared_api.api_registrar_visita(bigint, uuid, jsonb),
-  cuidared_api.api_registrar_visita_realizada(bigint, jsonb),
   cuidared_api.api_cancelar_visita(bigint, uuid, text),
   cuidared_api.api_listar_solicitudes_visita(bigint, jsonb, jsonb, integer, integer),
   cuidared_api.api_autorizar_solicitud_visita(bigint, uuid, jsonb),
   cuidared_api.api_rechazar_solicitud_visita(bigint, uuid, text)
   to authenticated;
-
--- Únicas funciones ejecutables sin sesión.
-grant execute on function
-  cuidared_api.api_publico_listar_organizaciones(),
-  cuidared_api.api_publico_crear_solicitud(jsonb),
-  cuidared_api.api_publico_consultar_solicitud(text),
-  cuidared_api.api_publico_registrar_observacion(text, text)
-  to anon, authenticated;
 
 commit;

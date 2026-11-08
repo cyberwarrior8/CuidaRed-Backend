@@ -323,7 +323,7 @@ $$;
 -- Contacto de emergencia como DTO (snake_case).
 create function cuidared_interno.env_contacto(c cuidared.contacto_emergencia) returns jsonb
 language sql immutable set search_path = '' as $$
-  select jsonb_build_object('contacto_id', c.contacto_emergencia_id, 'envejeciente_id', c.envejeciente_id,
+  select jsonb_build_object('contacto_id', c.contacto_emergencia_id::text, 'envejeciente_id', c.envejeciente_id,
                             'nombres', c.nombres, 'apellidos', c.apellidos, 'parentesco', c.parentesco,
                             'telefono', c.telefono, 'es_principal', c.es_principal)
 $$;

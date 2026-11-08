@@ -1,5 +1,18 @@
 # Cambios actuales
 
+## 07/11/2026 — Integración de fases 2 a 4
+
+- Perfil independiente de las RPC de cuentas, colecciones propias paginadas, contexto por cuenta e IDs bigint como texto en los módulos integrados.
+- Autorización en Express y SQL, prueba automática de 168 horas, cupos de membresías activas, perfil global, transferencia de titularidad y catálogos aprobados. Visitas programadas y autorizadas tanto en línea como al sincronizar. Evidencias privadas de visita con alcance sobre todos los adultos.
+- Se conectaron en el frontend del equipo las pantallas de cuentas, expedientes, visitas y agenda. La cola de visitas se limita a la sesión de la pestaña.
+- [Contratos y validación](docs/INTEGRACION-FASES-2-A-4.md). [Registro de propuestas de esquema](docs/CAMBIOS-SCHEMA-CUIDARED.md#cuidared-005--propuesta-integrada-de-fases-2-a-4). Sin aplicación remota.
+
+## 07/11/2026 — Borrador de integración territorial
+
+- Se incorporaron los archivos locales del catálogo ONE 2021, sus pruebas, las dos copias auditadas del SQL histórico y la verificación de solo lectura.
+- `scripts/validar-propuestas-local.js` limita la selección a los bloques de esquema 2a–4c, separando la carga territorial de los fixtures del ejecutor. Usa `fileURLToPath` para rutas de Windows con espacios. `.gitattributes` conserva LF en los dos SQL históricos para mantener la huella publicada.
+- Validación local del catálogo, reproducción de su SQL, comprobación SHA-256 y pruebas Vitest de territorio. No se ejecutó el validador PostgreSQL ni se aplicó SQL.
+
 ## 2026-11-06 — Fases 2 a 4: Organización, Envejecientes, Visitas y Seguimiento
 
 **Propósito:** el usuario pidió terminar lo que faltaba de la fase 2 y llegar hasta la fase 4 de las ocho. Confirmó dos decisiones nuevas: **prueba gratuita fija de 7 días** (a nivel de cuenta, sin plan) y **autorregistro del titular** para crear su Familia u Organización, que sustituye el «solo invitaciones» de la fase 1 (D17). Todo el SQL son **propuestas sin aplicar** en `docs/propuestas/fase-2a…4c-*.sql`, validadas en un PostgreSQL local desechable. No se escribió nada en Supabase, no se cambió la configuración Auth ni se crearon buckets. Lo que no definen V2 ni el SRS se marca como «Propuesta técnica» en cada contrato y queda para confirmación.

@@ -1,5 +1,6 @@
 /* Contexto de cuenta activa, permisos y acceso operativo por petición · RF-09/RF-11/RF-20. © 2026 Equipo CuidaRed – INTEC. */
 import { AppError, unavailable } from '../../lib/errors.js';
+import { isBigintId, jsonBigintId } from '../../lib/bigint-id.js';
 import { ACCIONES_SIN_ACCESO_OPERATIVO } from './permisos.js';
 
 /*
@@ -9,8 +10,6 @@ import { ACCIONES_SIN_ACCESO_OPERATIVO } from './permisos.js';
  * Las RPC de cada módulo vuelven a autorizar (defensa en profundidad): este middleware solo responde antes y con
  * errores claros.
  */
-
-const idPattern = /^[1-9]\d{0,17}$/;
 
 const sinPermiso = () =>
   new AppError(403, 'FORBIDDEN', 'No tienes permiso para realizar esta acción.');
@@ -33,11 +32,14 @@ export function readContext(ctx) {
   ) {
     throw unavailable();
   }
+  const cuentaId = jsonBigintId.safeParse(ctx.cuenta_id);
+  const membresiaId = jsonBigintId.nullish().safeParse(ctx.membresia_id);
+  if (!cuentaId.success || !membresiaId.success) throw unavailable();
   return {
-    cuentaId: String(ctx.cuenta_id),
+    cuentaId: cuentaId.data,
     tipo: ctx.tipo,
     rol: ctx.rol,
-    membresiaId: ctx.membresia_id == null ? null : String(ctx.membresia_id),
+    membresiaId: membresiaId.data ?? null,
     permisos: new Set(ctx.permisos),
     esTitular: ctx.es_titular === true,
     accesoOperativo: ctx.acceso_operativo,
@@ -50,15 +52,17 @@ export function readContext(ctx) {
 export function requireCuenta() {
   return async (req, res, next) => {
     const { cuentaId } = req.params;
-    if (typeof cuentaId !== 'string' || !idPattern.test(cuentaId)) {
+    if (!isBigintId(cuentaId)) {
       throw new AppError(404, 'NOT_FOUND', 'Recurso no encontrado.');
     }
     const ctx = await res.locals.access.repository.rpc('api_contexto_cuenta', {
-      p_cuenta_id: Number(cuentaId),
+      p_cuenta_id: cuentaId,
     });
     // Sin membresía activa la cuenta "no existe" para el usuario: no se revela si existe.
     if (!ctx) throw new AppError(404, 'NOT_FOUND', 'Recurso no encontrado.');
     res.locals.cuenta = readContext(ctx);
+    if (res.locals.cuenta.cuentaId !== cuentaId) throw unavailable();
+    res.locals.contextoCuenta = ctx;
     next();
   };
 }

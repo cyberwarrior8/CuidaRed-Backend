@@ -1,5 +1,6 @@
 /* Contratos de entrada y salida de miembros, titularidad y cuidadores · ID02/RF-11/RF-12. © 2026 Equipo CuidaRed – INTEC. */
 import { z } from 'zod';
+import { isBigintId, jsonBigintId } from '../../lib/bigint-id.js';
 import { createCollectionQuery } from '../../lib/collection-query.js';
 import { AppError, unavailable } from '../../lib/errors.js';
 import { ROLES } from '../cuentas/permisos.js';
@@ -7,13 +8,6 @@ import { ROLES } from '../cuentas/permisos.js';
 export const ESTADOS_MEMBRESIA = ['pendiente', 'activa', 'inactiva'];
 
 const nombre = z.string().trim().min(1).max(100);
-const idPattern = /^[1-9]\d{0,17}$/;
-
-// Identificador de membresía: entero positivo (bigint) como número JSON o texto de dígitos.
-const idMembresia = z.union([
-  z.int().min(1).max(Number.MAX_SAFE_INTEGER),
-  z.string().regex(idPattern).transform(Number).pipe(z.int().min(1).max(Number.MAX_SAFE_INTEGER)),
-]);
 
 export const invitarSchema = z.strictObject({
   correo: z.string().trim().toLowerCase().pipe(z.email().max(254)),
@@ -23,7 +17,7 @@ export const invitarSchema = z.strictObject({
   rol: z.enum(ROLES),
 });
 export const cambiarRolSchema = z.strictObject({ rol: z.enum(ROLES) });
-export const titularidadSchema = z.strictObject({ membresia_id: idMembresia });
+export const titularidadSchema = z.strictObject({ membresia_id: jsonBigintId });
 export const cuidadorSchema = z.strictObject({
   tipo_cuidado_id: z.int().min(1).max(32767),
   cuidador_independiente: z.boolean(),
@@ -52,19 +46,23 @@ export function requireEmptyBody(body) {
   parse(z.strictObject({}), body);
 }
 
-/** Id de ruta (membresía): texto de dígitos que cabe en un entero seguro; si no, el recurso no existe. */
+/** Id de ruta (membresía): texto decimal bigint. */
 export function readRouteId(value) {
-  if (typeof value !== 'string' || !idPattern.test(value) || !Number.isSafeInteger(Number(value))) {
+  if (!isBigintId(value)) {
     throw new AppError(404, 'NOT_FOUND', 'Recurso no encontrado.');
   }
-  return Number(value);
+  return value;
 }
 
 /* ───── DTO de salida: lista cerrada de campos (no se reenvía nada que la RPC añada de más) ───── */
 
 const isObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 // Como en el resto de la API (cuentas), los identificadores bigint viajan como texto: "21".
-const idTexto = (value) => String(value);
+const idTexto = (value) => {
+  const id = jsonBigintId.safeParse(value);
+  if (!id.success) throw unavailable();
+  return id.data;
+};
 
 export function readCuidador(row) {
   if (row === null || row === undefined) return null;

@@ -81,7 +81,7 @@ const api = (app, method, path) =>
 
 const tareaValida = () => ({
   envejeciente_id: adultoId,
-  cuidador_id: 12,
+  cuidador_id: '12',
   titulo: 'Medir la presión',
   prioridad_id: 2,
   fecha_programada: '2026-11-07',
@@ -200,13 +200,13 @@ describe('RF-16: listado de tareas (CR-162)', () => {
       meta: { page: 2, limit: 10, total: 41, totalPages: 5 },
     });
     expect(llamadas('api_tareas_listar')[0][1]).toEqual({
-      p_cuenta_id: 7,
+      p_cuenta_id: '7',
       p_filtros: {
         estado: 'pendiente',
         desde: '2026-11-01',
         hasta: '2026-11-30',
         envejeciente_id: adultoId,
-        cuidador_id: 12,
+        cuidador_id: '12',
       },
       p_orden: [
         { campo: 'fecha_programada', direccion: 'desc' },
@@ -272,7 +272,7 @@ describe('RF-16: crear tareas y series', () => {
     const res = await api(app, 'post', '/tareas').send(body).expect(201);
     expect(res.body).toEqual({ data: creada });
     expect(llamadas('api_tarea_crear')[0][1]).toEqual({
-      p_cuenta_id: 7,
+      p_cuenta_id: '7',
       p_datos: { ...tareaValida(), titulo: 'Medir la presión', indicacion_medica_id: null },
     });
     expect(audit).toHaveBeenCalledWith(
@@ -304,7 +304,7 @@ describe('RF-16: crear tareas y series', () => {
     ['fecha con otro formato', { fecha_programada: '07/11/2026' }],
     ['hora inválida', { hora_programada: '25:00' }],
     ['evidencia como texto', { requiere_evidencia: 'si' }],
-    ['cuidador como texto', { cuidador_id: '12' }],
+    ['cuidador inválido', { cuidador_id: '1e1' }],
     ['cuidador negativo', { cuidador_id: -1 }],
     ['adulto no UUID', { envejeciente_id: '1' }],
     ['prioridad decimal', { prioridad_id: 1.5 }],
@@ -387,7 +387,7 @@ describe('RF-16: editar y cancelar', () => {
       })
       .expect(200);
     expect(llamadas('api_tarea_actualizar')[0][1]).toEqual({
-      p_cuenta_id: 7,
+      p_cuenta_id: '7',
       p_tarea_id: tareaId,
       p_datos: {
         titulo: 'Nuevo título',
@@ -420,7 +420,7 @@ describe('RF-16: editar y cancelar', () => {
       .expect(200);
     expect(res.body.data.canceladas).toBe(1);
     expect(llamadas('api_tarea_cancelar')[0][1]).toEqual({
-      p_cuenta_id: 7,
+      p_cuenta_id: '7',
       p_tarea_id: tareaId,
       p_motivo: 'Se pospone',
       p_alcance: 'esta',
@@ -475,8 +475,11 @@ describe('RF-16 / D12: ejecución por el cuidador asignado', () => {
       (await api(app, 'post', `/tareas/${tareaId}/completar`).send({}).expect(200)).body.data
         .estado,
     ).toBe('completada');
-    expect(llamadas('api_tarea_iniciar')[0][1]).toEqual({ p_cuenta_id: 7, p_tarea_id: tareaId });
-    expect(llamadas('api_tarea_completar')[0][1]).toEqual({ p_cuenta_id: 7, p_tarea_id: tareaId });
+    expect(llamadas('api_tarea_iniciar')[0][1]).toEqual({ p_cuenta_id: '7', p_tarea_id: tareaId });
+    expect(llamadas('api_tarea_completar')[0][1]).toEqual({
+      p_cuenta_id: '7',
+      p_tarea_id: tareaId,
+    });
     expect(audit).toHaveBeenCalledWith(
       expect.objectContaining({ action: 'agenda.tarea_iniciada' }),
     );
@@ -532,7 +535,7 @@ describe('RS-013 / D13: subida de evidencias a Storage privado', () => {
       .send(archivoValido())
       .expect(200);
     expect(llamadas('api_evidencia_preparar_subida')[0][1]).toEqual({
-      p_cuenta_id: 7,
+      p_cuenta_id: '7',
       p_tarea_id: tareaId,
       p_datos: archivoValido(),
     });
@@ -658,7 +661,7 @@ describe('RF-16 / RS-013: registro de evidencias', () => {
     const res = await api(app, 'post', `/tareas/${tareaId}/evidencias`).send(body).expect(201);
     expect(res.body).toEqual({ data: evidencia });
     expect(llamadas('api_evidencia_registrar')[0][1]).toEqual({
-      p_cuenta_id: 7,
+      p_cuenta_id: '7',
       p_tarea_id: tareaId,
       p_datos: { ...body, observacion: 'Tomada tras la visita' },
     });
@@ -817,7 +820,7 @@ describe('D12: validar y rechazar evidencias', () => {
     const res = await api(app, 'post', `/evidencias/${evidenciaId}/validar`).expect(200);
     expect(res.body).toEqual({ data: resultado });
     expect(llamadas('api_evidencia_validar')[0][1]).toEqual({
-      p_cuenta_id: 7,
+      p_cuenta_id: '7',
       p_evidencia_id: evidenciaId,
     });
     expect(audit).toHaveBeenCalledWith(
@@ -842,7 +845,7 @@ describe('D12: validar y rechazar evidencias', () => {
       .send({ motivo: '  La foto está borrosa  ' })
       .expect(200);
     expect(llamadas('api_evidencia_rechazar')[0][1]).toEqual({
-      p_cuenta_id: 7,
+      p_cuenta_id: '7',
       p_evidencia_id: evidenciaId,
       p_motivo: 'La foto está borrosa',
     });

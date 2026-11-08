@@ -1,5 +1,6 @@
 /* Validación de entradas de la agenda de cuidado y las evidencias · RF-16, RS-013, CR-162. © 2026 Equipo CuidaRed – INTEC. */
 import { z } from 'zod';
+import { bigintId, jsonBigintId } from '../../lib/bigint-id.js';
 import { businessError } from '../../lib/business-errors.js';
 import { AppError } from '../../lib/errors.js';
 import { createCollectionQuery } from '../../lib/collection-query.js';
@@ -13,7 +14,7 @@ export const EVIDENCIA_MAX_BYTES = 5 * 1024 * 1024;
 const fecha = z.iso.date();
 const hora = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
 const uuid = z.uuid();
-const idEntero = z.int().positive().max(Number.MAX_SAFE_INTEGER);
+const idEntero = jsonBigintId;
 const titulo = z.string().trim().min(3).max(80);
 const alcance = z.enum(['esta', 'siguientes']);
 
@@ -117,10 +118,7 @@ const readTareasQuery = createCollectionQuery({
     hasta: fecha,
     estado: z.enum(ESTADOS_TAREA),
     envejeciente_id: uuid,
-    cuidador_id: z
-      .string()
-      .regex(/^[1-9]\d{0,14}$/)
-      .transform(Number),
+    cuidador_id: bigintId,
   },
 });
 

@@ -1,8 +1,9 @@
 /* Miembros, roles, invitaciones, titularidad y cuidadores · ID02/RF-11/RF-12. © 2026 Equipo CuidaRed – INTEC. */
 import { Router } from 'express';
+import { z } from 'zod';
+import { createCollectionQuery, paginatedResponse } from '../../lib/collection-query.js';
 import { rateLimit } from 'express-rate-limit';
 import { businessError } from '../../lib/business-errors.js';
-import { paginatedResponse } from '../../lib/collection-query.js';
 import { AppError } from '../../lib/errors.js';
 import { ROLES_POR_TIPO } from '../cuentas/permisos.js';
 import { requirePermiso } from '../cuentas/require-cuenta.js';
@@ -48,7 +49,39 @@ export function createMiembrosRouter({ audit, adminGateway = null }) {
   });
 
   const repoDe = (res) => createMiembrosRepository(res.locals.access.repository);
-  const cuentaDe = (res) => Number(res.locals.cuenta.cuentaId);
+  const cuentaDe = (res) => res.locals.cuenta.cuentaId;
+  const candidatosQuery = createCollectionQuery({
+    sortableFields: ['nombre', 'usuario_id'],
+    defaultSort: 'nombre',
+    tieBreaker: 'usuario_id',
+  });
+  const usos = {
+    visita: 'visitas:programar',
+    asignacion: 'adultos:asignar',
+    familiar: 'familiares:autorizar',
+    agenda: 'agenda:gestionar',
+    cuidado: 'cuidadores:gestionar',
+    titularidad: 'usuarios:gestionar',
+  };
+  const usoSchema = z.enum(Object.keys(usos));
+  router.get(
+    '/candidatos/:uso',
+    (req, res, next) => {
+      const uso = parse(usoSchema, req.params.uso);
+      return requirePermiso(usos[uso])(req, res, next);
+    },
+    async (req, res) => {
+      const query = candidatosQuery(req.query);
+      const result = await res.locals.access.repository.rpc('api_candidatos_cuenta', {
+        p_cuenta_id: cuentaDe(res),
+        p_uso: req.params.uso,
+        p_offset: query.offset,
+        p_limit: query.limit,
+        p_orden: query.sort,
+      });
+      res.json(paginatedResponse(result?.items, { ...query, total: result?.total }));
+    },
+  );
   // Auditoría técnica sin datos personales: actor, acción y resultado (RF-21).
   const registrar = (res, action) =>
     audit({
@@ -134,18 +167,6 @@ export function createMiembrosRouter({ audit, adminGateway = null }) {
     registrar(res, 'cuidador.guardado');
     res.json({ data });
   });
-
-  router.post(
-    '/miembros/:membresiaId/cuidador/finalizar',
-    gestionarCuidadores,
-    async (req, res) => {
-      const membresiaId = readRouteId(req.params.membresiaId);
-      requireEmptyBody(req.body);
-      const data = await repoDe(res).finalizarCuidador(cuentaDe(res), membresiaId);
-      registrar(res, 'cuidador.finalizado');
-      res.json({ data });
-    },
-  );
 
   return router;
 }

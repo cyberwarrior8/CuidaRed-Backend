@@ -35,11 +35,15 @@ History contains only `Initial commit`. Use concise imperative subjects. PRs mus
 
 **Obtain prior explicit approval before every commit. Never commit to `master`.**
 
+Use `Edgardo-CuidaRed-Desarrollo` and `Katriel-Cuidared-Desarrollo` for parallel development. Review and test their changes together in `integracion/fases-2-4` before promoting them to the main branch.
+
 ## Security & Context Decisions
 
 V2 rules prevail; retain compatible SRS requirements. Follow the project's documented security guidelines and good practices, especially `../../Docs/Seguridad/` and the SRS. Protect secrets, enforce authorization/RLS, and use synthetic data. Stripe is sandbox-only.
 
 **Do not change database schema, data, permissions, policies, or apply migrations without prior approval.** `DB.sql` is a baseline, not an executable migration.
+
+Document every proposed/applied change to schema `cuidared` separately in `docs/CAMBIOS-SCHEMA-CUIDARED.md`, with scope, approval, SQL source, execution status and verification.
 
 ## Clarifications & Change Tracking
 

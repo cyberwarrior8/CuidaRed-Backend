@@ -1,9 +1,11 @@
 /* Pruebas de las rutas públicas de solicitudes de visita · V2 §Visita, sin sesión y con transporte simulado. © 2026 Equipo CuidaRed – INTEC. */
 import { createHash } from 'node:crypto';
+import express from 'express';
 import { describe, expect, it, vi } from 'vitest';
 import request from 'supertest';
 import { createApp } from '../src/app.js';
 import { createSupabaseGateway } from '../src/modules/access/supabase-gateway.js';
+import { createPublicoRouter } from '../src/modules/publico/publico-routes.js';
 import {
   ALFABETO_CODIGO,
   generarCodigoSeguimiento,
@@ -46,8 +48,7 @@ const estadoRpc = (extra = {}) => ({
 });
 
 /**
- * Aplicación completa con el gateway real (cliente anon) y transporte simulado: así se comprueba también que el cliente
- * público solo llama RPC `api_publico_*` y que los errores se traducen con la lista cerrada de códigos.
+ * Borrador público aislado para pruebas de contrato. La aplicación real mantiene cerradas estas rutas.
  */
 function setup(rpc = {}) {
   const llamadas = [];
@@ -62,10 +63,20 @@ function setup(rpc = {}) {
     return salida instanceof Response ? salida : json(salida);
   });
   const audit = vi.fn();
-  const app = createApp({
+  const deps = {
     env: { origins: [] },
     gateway: createSupabaseGateway(env, fetch),
     audit,
+  };
+  const app = express();
+  app.use('/api/v1/publico', express.json(), (_req, res, next) => {
+    res.set('Cache-Control', 'no-store');
+    next();
+  });
+  app.use('/api/v1/publico', createPublicoRouter(deps));
+  app.use(createApp(deps));
+  app.use((error, _req, res, _next) => {
+    res.status(error.status ?? 500).json({ error: { code: error.code, message: error.message } });
   });
   return { app, audit, llamadas, fetch };
 }
@@ -89,6 +100,14 @@ describe('código de seguimiento', () => {
     expect(normalizarCodigo(' vis-abcd 2345 ')).toBe('VIS-ABCD2345');
     expect(esperado).toMatch(/^[0-9a-f]{64}$/);
   });
+});
+
+it('la aplicación de integración no monta solicitudes externas', async () => {
+  const gateway = { publico: vi.fn() };
+  const app = createApp({ env: { origins: [] }, gateway, audit: vi.fn() });
+  await request(app).get('/api/v1/publico/organizaciones').expect(404);
+  await request(app).post('/api/v1/publico/solicitudes-visita').send(solicitud()).expect(404);
+  expect(gateway.publico).not.toHaveBeenCalled();
 });
 
 describe('GET /publico/organizaciones', () => {

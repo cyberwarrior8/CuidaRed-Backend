@@ -108,7 +108,7 @@ describe('GET /visitas: historial paginado con el alcance del usuario', () => {
     expect(res.body.meta).toEqual({ page: 2, limit: 5, total: 11, totalPages: 3 });
     expect(res.body.data).toHaveLength(2);
     expect(rpcLlamadas('api_listar_visitas')[0].cuerpo).toEqual({
-      p_cuenta_id: 7,
+      p_cuenta_id: '7',
       p_filtros: { estado: 'programada', desde: '2026-11-01', envejeciente_id: ID.adulto1 },
       p_orden: [
         { campo: 'fecha', direccion: 'desc' },
@@ -169,7 +169,7 @@ describe('GET /visitas/:visitaId', () => {
     const res = await api('get', `/visitas/${ID.visita}`).expect(200);
     expect(res.body.data.visita_id).toBe(ID.visita);
     expect(rpcLlamadas('api_obtener_visita')[0].cuerpo).toEqual({
-      p_cuenta_id: 7,
+      p_cuenta_id: '7',
       p_visita_id: ID.visita,
     });
   });
@@ -207,7 +207,7 @@ describe('POST /visitas: programar y autorizar', () => {
       .expect(201);
     expect(res.body.data.estado).toBe('programada');
     expect(rpcLlamadas('api_programar_visita')[0].cuerpo).toEqual({
-      p_cuenta_id: 7,
+      p_cuenta_id: '7',
       p_datos: cuerpo(),
     });
     expect(audit).toHaveBeenCalledWith(
@@ -298,7 +298,7 @@ describe('POST /visitas/:visitaId/iniciar', () => {
     const res = await api('post', `/visitas/${ID.visita}/iniciar`).expect(200);
     expect(res.body.data.estado).toBe('en_curso');
     expect(rpcLlamadas('api_iniciar_visita')[0].cuerpo).toEqual({
-      p_cuenta_id: 7,
+      p_cuenta_id: '7',
       p_visita_id: ID.visita,
     });
     expect(audit).toHaveBeenCalledWith(expect.objectContaining({ action: 'visita.iniciada' }));
@@ -359,7 +359,7 @@ describe('POST /visitas/:visitaId/registrar: realización', () => {
     const res = await api('post', `/visitas/${ID.visita}/registrar`).send(cuerpo).expect(200);
     expect(res.body.data.estado).toBe('completada');
     expect(rpcLlamadas('api_registrar_visita')[0].cuerpo).toEqual({
-      p_cuenta_id: 7,
+      p_cuenta_id: '7',
       p_visita_id: ID.visita,
       p_datos: cuerpo,
     });
@@ -431,67 +431,11 @@ describe('POST /visitas/:visitaId/registrar: realización', () => {
   });
 });
 
-describe('POST /visitas/realizada: visita no programada', () => {
-  const cuerpo = (extra = {}) => ({
-    visita_id: ID.visita,
-    razon: 'Visita sin aviso previo',
-    detalles: [
-      { envejeciente_id: ID.adulto1, estado_general: 'estable', observacion: 'Todo en orden.' },
-    ],
-    ...extra,
-  });
-  it('201 al crear y 200 en la repetición idempotente con el mismo visita_id', async () => {
-    let creada = true;
-    const { api, rpcLlamadas } = setup({
-      rol: 'cuidador',
-      rpc: {
-        api_registrar_visita_realizada: () => {
-          const salida = {
-            creada,
-            visita: visita({ estado: 'completada', origen: 'sin_programar' }),
-          };
-          creada = false;
-          return salida;
-        },
-      },
-    });
-    const primera = await api('post', '/visitas/realizada').send(cuerpo()).expect(201);
-    expect(primera.body.data.origen).toBe('sin_programar');
-    await api('post', '/visitas/realizada').send(cuerpo()).expect(200);
-    expect(rpcLlamadas('api_registrar_visita_realizada')[0].cuerpo).toEqual({
-      p_cuenta_id: 7,
-      p_datos: cuerpo(),
-    });
-  });
-  it('lo registra el personal con visitas:registrar; el Familiar y el Administrador no', async () => {
-    for (const rol of ['familiar', 'administrador']) {
-      const { api, rpcLlamadas } = setup({ rol });
-      await api('post', '/visitas/realizada').send(cuerpo()).expect(403);
-      expect(rpcLlamadas('api_registrar_visita_realizada')).toHaveLength(0);
-    }
-  });
-  it.each([
-    ['id que no es uuid', { visita_id: '123' }],
-    ['fecha inválida', { fecha: '31/10/2026' }],
-    ['campo desconocido', { origen: 'interna' }],
-    ['sin detalles', { detalles: [] }],
-  ])('rechaza %s con 422', async (_caso, extra) => {
-    const { api, rpcLlamadas } = setup({ rol: 'cuidador' });
-    await api('post', '/visitas/realizada').send(cuerpo(extra)).expect(422);
+describe('Registro con autorización previa', () => {
+  it('la ruta de registro directo no existe y no llama a ninguna RPC de escritura', async () => {
+    const { api, rpcLlamadas } = setup();
+    await api('post', '/visitas/realizada').send({ detalles: [] }).expect(404);
     expect(rpcLlamadas('api_registrar_visita_realizada')).toHaveLength(0);
-  });
-  it('un id ajeno o un adulto sin alcance se rechazan sin revelar detalles', async () => {
-    const conflicto = setup({
-      rol: 'cuidador',
-      rpc: { api_registrar_visita_realizada: () => rpcError('P0001', 'CR_CONFLICTO') },
-    });
-    const a = await conflicto.api('post', '/visitas/realizada').send(cuerpo()).expect(409);
-    expect(a.body.error.code).toBe('CONFLICT');
-    const sinAlcance = setup({
-      rol: 'cuidador',
-      rpc: { api_registrar_visita_realizada: () => rpcError('42501') },
-    });
-    await sinAlcance.api('post', '/visitas/realizada').send(cuerpo()).expect(403);
   });
 });
 
@@ -505,7 +449,7 @@ describe('POST /visitas/:visitaId/cancelar', () => {
       .expect(200);
     expect(res.body.data.estado).toBe('cancelada');
     expect(rpcLlamadas('api_cancelar_visita')[0].cuerpo).toEqual({
-      p_cuenta_id: 7,
+      p_cuenta_id: '7',
       p_visita_id: ID.visita,
       p_motivo: 'El adulto está hospitalizado.',
     });
@@ -560,7 +504,7 @@ describe('solicitudes de visita de personas externas (gestión)', () => {
     expect(res.body.meta.total).toBe(1);
     expect(res.body.data[0].visitante.cedula).toBe('00112345678');
     expect(rpcLlamadas('api_listar_solicitudes_visita')[0].cuerpo).toEqual({
-      p_cuenta_id: 7,
+      p_cuenta_id: '7',
       p_filtros: { estado: 'pendiente' },
       p_orden: [
         { campo: 'fecha_propuesta', direccion: 'asc' },
@@ -592,7 +536,7 @@ describe('solicitudes de visita de personas externas (gestión)', () => {
       .expect(201);
     expect(res.body.data.origen).toBe('solicitud');
     expect(rpcLlamadas('api_autorizar_solicitud_visita')[0].cuerpo).toEqual({
-      p_cuenta_id: 7,
+      p_cuenta_id: '7',
       p_solicitud_id: ID.solicitud,
       p_datos: cuerpo,
     });

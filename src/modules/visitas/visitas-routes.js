@@ -1,6 +1,13 @@
 /* Visitas: programar, autorizar, registrar y consultar · ID04/RF-02. © 2026 Equipo CuidaRed – INTEC. */
 import { Router } from 'express';
 import { paginatedResponse } from '../../lib/collection-query.js';
+import { AppError, unavailable } from '../../lib/errors.js';
+import { DESCARGA_SEGUNDOS, EVIDENCIAS_BUCKET } from '../agenda/agenda-service.js';
+import {
+  parseBody as parseEvidence,
+  registrarEvidenciaSchema,
+  subidaEvidenciaSchema,
+} from '../agenda/agenda-schemas.js';
 import { requirePermiso } from '../cuentas/require-cuenta.js';
 import './visitas-errors.js';
 import { createVisitasRepository } from './visitas-repository.js';
@@ -15,7 +22,6 @@ import {
   rechazarSolicitudSchema,
   sinCuerpoSchema,
   uuidParam,
-  visitaRealizadaSchema,
 } from './visitas-schemas.js';
 
 /*
@@ -26,7 +32,6 @@ import {
  *   GET  /visitas                              visitas:ver          historial paginado, con el alcance del usuario
  *   GET  /visitas/:visitaId                    visitas:ver          detalle (adultos y observaciones según alcance)
  *   POST /visitas                              visitas:programar + visitas:autorizar   programa y autoriza
- *   POST /visitas/realizada                    visitas:registrar    visita no programada ya realizada
  *   POST /visitas/:visitaId/iniciar            visitas:registrar    programada → en curso (participante o gestor)
  *   POST /visitas/:visitaId/registrar          visitas:registrar    en curso → completada (participante o gestor)
  *   POST /visitas/:visitaId/cancelar           visitas:programar    programada | en curso → cancelada
@@ -37,7 +42,7 @@ import {
 export function createVisitasRouter({ audit }) {
   const router = Router({ mergeParams: true });
   const repo = (res) => createVisitasRepository(res.locals.access.repository.rpc);
-  const cuentaId = (res) => Number(res.locals.cuenta.cuentaId);
+  const cuentaId = (res) => res.locals.cuenta.cuentaId;
   const log = (res, action) =>
     audit({
       requestId: res.locals.requestId,
@@ -63,15 +68,6 @@ export function createVisitasRouter({ audit }) {
       res.status(201).json({ data: visita });
     },
   );
-
-  // Antes de /visitas/:visitaId para que "realizada" nunca se interprete como un id.
-  router.post('/visitas/realizada', requirePermiso('visitas:registrar'), async (req, res) => {
-    const datos = parseBody(visitaRealizadaSchema, req.body);
-    const { creada, visita } = await repo(res).registrarRealizada(cuentaId(res), datos);
-    if (creada) log(res, 'visita.realizada');
-    // 201 al crear; 200 si es la repetición idempotente de una visita ya registrada con ese visita_id.
-    res.status(creada ? 201 : 200).json({ data: visita });
-  });
 
   router.get('/visitas/:visitaId', requirePermiso('visitas:ver'), async (req, res) => {
     const visita = await repo(res).obtener(cuentaId(res), uuidParam(req.params.visitaId));
@@ -112,6 +108,61 @@ export function createVisitasRouter({ audit }) {
       res.json({ data: visita });
     },
   );
+
+  const evidenciaRpc = (res, req, name, body) =>
+    res.locals.access.repository.rpc(name, {
+      p_cuenta_id: cuentaId(res),
+      p_visita_id: uuidParam(req.params.visitaId),
+      ...(body ? { p_datos: body } : {}),
+    });
+
+  router.post(
+    '/visitas/:visitaId/evidencias/subida',
+    requirePermiso('visitas:registrar'),
+    async (req, res) => {
+      const data = await evidenciaRpc(
+        res,
+        req,
+        'api_visita_preparar_evidencia',
+        parseEvidence(subidaEvidenciaSchema, req.body),
+      );
+      res.json({ data });
+    },
+  );
+
+  router.post(
+    '/visitas/:visitaId/evidencias',
+    requirePermiso('visitas:registrar'),
+    async (req, res) => {
+      const data = await evidenciaRpc(
+        res,
+        req,
+        'api_visita_registrar_evidencia',
+        parseEvidence(registrarEvidenciaSchema, req.body),
+      );
+      log(res, 'visita.evidencia_registrada');
+      res.status(201).json({ data });
+    },
+  );
+
+  router.get('/visitas/:visitaId/evidencias', requirePermiso('visitas:ver'), async (req, res) => {
+    const rows = await evidenciaRpc(res, req, 'api_visita_listar_evidencias');
+    if (!Array.isArray(rows)) throw unavailable();
+    const storage = res.locals.access.repository.storage(EVIDENCIAS_BUCKET);
+    const data = await Promise.all(
+      rows.map(async ({ evidencia_id, nombre_archivo, ruta }) => {
+        if (typeof ruta !== 'string') throw unavailable();
+        try {
+          const url_descarga = await storage.signedDownloadUrl(ruta, DESCARGA_SEGUNDOS);
+          return { evidencia_id, nombre_archivo, url_descarga };
+        } catch (error) {
+          if (!(error instanceof AppError) || error.status !== 404) throw error;
+          return { evidencia_id, nombre_archivo, url_descarga: null };
+        }
+      }),
+    );
+    res.json({ data });
+  });
 
   router.get('/solicitudes-visita', requirePermiso('visitas:autorizar'), async (req, res) => {
     const query = readSolicitudesQuery(req.query);

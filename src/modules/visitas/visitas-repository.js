@@ -61,16 +61,6 @@ export function createVisitasRepository(rpc) {
         }),
       );
     },
-    async registrarRealizada(cuentaId, datos) {
-      const res = objeto(
-        await rpc('api_registrar_visita_realizada', {
-          p_cuenta_id: cuentaId,
-          p_datos: sinNulos(datos),
-        }),
-      );
-      if (typeof res.creada !== 'boolean') throw unavailable();
-      return { creada: res.creada, visita: objeto(res.visita) };
-    },
     async cancelar(cuentaId, visitaId, motivo) {
       return objeto(
         await rpc('api_cancelar_visita', {

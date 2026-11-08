@@ -1,13 +1,30 @@
 /* Alta de cuenta por autorregistro del titular · ID02/RF-11/RF-20. © 2026 Equipo CuidaRed – INTEC. */
 import { Router } from 'express';
+import { z } from 'zod';
+import { createCollectionQuery, paginatedResponse } from '../../lib/collection-query.js';
 import './cuentas-errors.js';
-import { contextoDto } from './cuentas-dto.js';
+import { contextoDto, estadoSuscripcion, paginaCuentasDto } from './cuentas-dto.js';
 import { createCuentasRepository } from './cuentas-repository.js';
 import { crearCuentaSchema, parseInput } from './cuentas-schemas.js';
+import { TIPOS_CUENTA } from './permisos.js';
+
+const readQuery = createCollectionQuery({
+  sortableFields: ['nombre', 'fecha_creacion', 'cuenta_id'],
+  defaultSort: 'nombre',
+  tieBreaker: 'cuenta_id',
+  filterSchemas: { tipo_cuenta: z.enum(TIPOS_CUENTA), suscripcion_estado: estadoSuscripcion },
+});
 
 // POST /cuentas (autorregistro del titular). Montado a nivel de /api/v1: exige sesión, no membresía.
 export function createCuentasRouter({ audit }) {
   const router = Router({ mergeParams: true });
+
+  router.get('/cuentas', async (req, res) => {
+    const query = readQuery(req.query);
+    const repo = createCuentasRepository(res.locals.access.repository.rpc);
+    const { items, total } = paginaCuentasDto(await repo.listarPropias(query));
+    res.json(paginatedResponse(items, { ...query, total }));
+  });
 
   router.post('/cuentas', async (req, res) => {
     const datos = parseInput(crearCuentaSchema, req.body);

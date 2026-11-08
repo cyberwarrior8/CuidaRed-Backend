@@ -1,6 +1,7 @@
 /* Perfiles de adultos mayores, consentimiento y contactos · ID03/RF-01/RF-17. © 2026 Equipo CuidaRed – INTEC. */
 import { Router } from 'express';
 import { z } from 'zod';
+import { isBigintId } from '../../lib/bigint-id.js';
 import { paginatedResponse } from '../../lib/collection-query.js';
 import { AppError } from '../../lib/errors.js';
 import { requirePermiso } from '../cuentas/require-cuenta.js';
@@ -37,8 +38,8 @@ function adultoId(req) {
   return result.data;
 }
 function contactoId(req) {
-  if (!/^[1-9]\d{0,14}$/.test(req.params.contactoId)) throw notFound();
-  return Number(req.params.contactoId);
+  if (!isBigintId(req.params.contactoId)) throw notFound();
+  return req.params.contactoId;
 }
 
 // Rutas relativas a /cuentas/:cuentaId (contexto ya resuelto en res.locals.cuenta).
@@ -46,7 +47,7 @@ export function createEnvejecientesRouter({ audit }) {
   const router = Router({ mergeParams: true });
   const repo = (res) => envejecientesRepository(res.locals.access.repository.rpc);
   // La cuenta efectiva sale del contexto verificado por requireCuenta, nunca del cuerpo ni de la consulta.
-  const cuentaId = (res) => Number(res.locals.cuenta.cuentaId);
+  const cuentaId = (res) => res.locals.cuenta.cuentaId;
   // Sin datos personales: solo quién, qué y cuándo (el sumidero de auditoría conserva una lista cerrada).
   const log = (res, action) =>
     audit({

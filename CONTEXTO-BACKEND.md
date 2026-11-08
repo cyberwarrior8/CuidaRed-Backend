@@ -1,5 +1,7 @@
 # Contexto del backend de CuidaRed
 
+Los acuerdos y contratos vigentes de fases 2 a 4 están en [Integración de fases 2 a 4](docs/INTEGRACION-FASES-2-A-4.md). Los estados de implementación de este contexto describen las etapas previas.
+
 Fecha de revisión: 24 de octubre de 2026.
 
 **Estado: contexto documental recopilado con once decisiones confirmadas por el usuario el 24 de octubre de 2026; quedan preguntas de diseño abiertas.** Este archivo reúne el propósito, las reglas, los requisitos y el estado técnico encontrados en la carpeta del proyecto. La sección 15 distingue las resoluciones confirmadas de las preguntas que deben consultarse antes de implementar el comportamiento afectado.

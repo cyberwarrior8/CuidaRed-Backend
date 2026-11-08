@@ -88,8 +88,10 @@ create function cuidared_interno.tarea_coherencia() returns trigger
 language plpgsql set search_path = '' as $$
 begin
   if not exists (
-    select 1 from cuidared.cuidador c join cuidared.envejeciente e on e.cuenta_id = c.cuenta_id
-    where c.cuidador_id = new.cuidador_id and e.envejeciente_id = new.envejeciente_id) then
+    select 1 from cuidared.cuidador c
+    join cuidared.envejeciente e on e.envejeciente_id = new.envejeciente_id
+    join lateral cuidared_interno.membresia_activa(e.cuenta_id, c.usuario_id) m on m.rol = 'cuidador'
+    where c.cuidador_id = new.cuidador_id and c.fecha_fin is null) then
     raise exception 'El cuidador no pertenece a la cuenta del adulto mayor' using errcode = '23514';
   end if;
   if new.indicacion_medica_id is not null and not exists (
@@ -162,7 +164,7 @@ language sql stable set search_path = '' as $$
     select 1 from cuidared.tarea_agenda t
     join cuidared.cuidador c on c.cuidador_id = t.cuidador_id
     join cuidared.envejeciente e on e.envejeciente_id = t.envejeciente_id
-    where t.tarea_agenda_id = p_tarea_id and c.usuario_id = p_usuario_id and c.cuenta_id = p_cuenta_id
+    where t.tarea_agenda_id = p_tarea_id and c.usuario_id = p_usuario_id and c.fecha_fin is null
       and e.cuenta_id = p_cuenta_id)
 $$;
 
@@ -188,7 +190,7 @@ language plpgsql stable set search_path = '' as $$
 declare v_usuario uuid;
 begin
   select c.usuario_id into v_usuario from cuidared.cuidador c
-  where c.cuidador_id = p_cuidador_id and c.cuenta_id = p_cuenta_id
+  where c.cuidador_id = p_cuidador_id
     and (c.fecha_fin is null or c.fecha_fin >= cuidared_interno.hoy());
   if v_usuario is null
      or not cuidared_interno.agenda_tiene_permiso(p_cuenta_id, v_usuario, 'agenda:ejecutar')
@@ -231,7 +233,7 @@ language sql stable set search_path = '' as $$
     'tarea_id', t.tarea_agenda_id,
     'envejeciente_id', t.envejeciente_id,
     'envejeciente_nombre', btrim(e.nombres::text || ' ' || e.apellidos::text),
-    'cuidador_id', t.cuidador_id,
+    'cuidador_id', t.cuidador_id::text,
     'cuidador_nombre', btrim(u.nombres::text || ' ' || u.apellidos::text),
     'indicacion_medica_id', t.indicacion_medica_id,
     'indicacion_titulo', i.titulo,
@@ -327,7 +329,7 @@ begin
     v_hasta := cuidared_interno.agenda_fecha(p_filtros, 'hasta', false);
     v_estado := cuidared_interno.agenda_dato(p_filtros, 'estado', 'string', false);
     v_env := cuidared_interno.agenda_dato(p_filtros, 'envejeciente_id', 'string', false)::uuid;
-    v_cuidador := cuidared_interno.agenda_dato(p_filtros, 'cuidador_id', 'number', false)::bigint;
+    v_cuidador := cuidared_interno.agenda_dato(p_filtros, 'cuidador_id', 'string', false)::bigint;
   exception when data_exception then raise invalid_parameter_value;
   end;
   if v_estado is not null and v_estado not in ('pendiente', 'en_progreso', 'completada', 'cancelada') then
@@ -361,7 +363,7 @@ begin
   where e.cuenta_id = p_cuenta_id and cuidared_interno.alcanza_envejeciente(p_cuenta_id, e.envejeciente_id, v_uid);
   if not v_gestor then
     select coalesce(array_agg(c.cuidador_id), array[]::bigint[]) into v_propios
-    from cuidared.cuidador c where c.usuario_id = v_uid and c.cuenta_id = p_cuenta_id;
+    from cuidared.cuidador c where c.usuario_id = v_uid and c.fecha_fin is null;
   end if;
 
   v_where := $w$ e.cuenta_id = $1 and t.envejeciente_id = any ($2)
@@ -424,7 +426,7 @@ begin
   end if;
   begin
     v_env := cuidared_interno.agenda_dato(p_datos, 'envejeciente_id', 'string')::uuid;
-    v_cuidador := cuidared_interno.agenda_dato(p_datos, 'cuidador_id', 'number')::bigint;
+    v_cuidador := cuidared_interno.agenda_dato(p_datos, 'cuidador_id', 'string')::bigint;
     v_titulo := cuidared_interno.agenda_texto(p_datos, 'titulo', 3, 80);
     v_indicacion := cuidared_interno.agenda_dato(p_datos, 'indicacion_medica_id', 'string', false)::uuid;
     v_prioridad := cuidared_interno.agenda_dato(p_datos, 'prioridad_id', 'number')::smallint;
@@ -539,7 +541,7 @@ begin
   begin
     v_alcance := coalesce(cuidared_interno.agenda_dato(p_datos, 'alcance', 'string', false), 'esta');
     if p_datos ? 'titulo' then v_titulo := cuidared_interno.agenda_texto(p_datos, 'titulo', 3, 80); end if;
-    if p_datos ? 'cuidador_id' then v_cuidador := cuidared_interno.agenda_dato(p_datos, 'cuidador_id', 'number')::bigint; end if;
+    if p_datos ? 'cuidador_id' then v_cuidador := cuidared_interno.agenda_dato(p_datos, 'cuidador_id', 'string')::bigint; end if;
     if p_datos ? 'indicacion_medica_id' then v_indicacion := cuidared_interno.agenda_dato(p_datos, 'indicacion_medica_id', 'string', false)::uuid; end if;
     if p_datos ? 'prioridad_id' then v_prioridad := cuidared_interno.agenda_dato(p_datos, 'prioridad_id', 'number')::smallint; end if;
     if p_datos ? 'fecha_programada' then v_fecha := cuidared_interno.agenda_fecha(p_datos, 'fecha_programada'); end if;
@@ -927,7 +929,7 @@ declare
   v_cuenta bigint; v_tarea uuid; v_t record;
 begin
   if v_uid is null or p_nombre is null or p_modo is null or p_modo not in ('subir', 'ver') then return false; end if;
-  v_m := regexp_match(p_nombre, '^cuenta/([1-9][0-9]{0,17})/tarea/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(jpg|png|webp|pdf)$');
+  v_m := regexp_match(p_nombre, '^cuenta/([1-9][0-9]{0,18})/tarea/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(jpg|png|webp|pdf)$');
   if v_m is null then return false; end if;
   v_cuenta := v_m[1]::bigint;
   v_tarea := v_m[2]::uuid;

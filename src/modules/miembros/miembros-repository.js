@@ -103,14 +103,6 @@ export function createMiembrosRepository({ rpc }) {
         }),
       );
     },
-    async finalizarCuidador(cuentaId, membresiaId) {
-      return readMiembro(
-        await rpc('api_finalizar_cuidador_miembro', {
-          p_cuenta_id: cuentaId,
-          p_membresia_id: membresiaId,
-        }),
-      );
-    },
     /* Membresías propias (sin cuenta en la ruta: la RPC solo actúa sobre la pendiente de quien llama). */
     async aceptarPropia(membresiaId) {
       return readMembresiaAceptada(

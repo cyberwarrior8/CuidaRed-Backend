@@ -1,5 +1,6 @@
 /* Contratos de salida (DTO en snake_case) de cuentas, configuración y suscripción · CR-162/CR-164. © 2026 Equipo CuidaRed – INTEC. */
 import { z } from 'zod';
+import { jsonBigintId as idCuenta } from '../../lib/bigint-id.js';
 import { unavailable } from '../../lib/errors.js';
 import { ROLES, TIPOS_CUENTA } from './permisos.js';
 
@@ -15,10 +16,7 @@ function leer(schema, valor) {
 
 const entero = z.number().int();
 const textoOpcional = z.string().nullable();
-const idCuenta = z
-  .union([z.number().int().positive(), z.string().regex(/^[1-9]\d{0,17}$/)])
-  .transform(String);
-const estadoSuscripcion = z.enum(['prueba', 'activa', 'vencida', 'cancelada', 'suspendida']);
+export const estadoSuscripcion = z.enum(['prueba', 'activa', 'vencida', 'cancelada', 'suspendida']);
 const fecha = z.iso.date();
 const instante = z.iso
   .datetime({ offset: true })
@@ -85,16 +83,13 @@ const pendiente = z
     membresia_id: p.membresia_id,
   }));
 
-const misCuentas = z.object({ activas: z.array(contexto), pendientes: z.array(pendiente) });
+const paginaCuentas = z.object({ items: z.array(contexto), total: entero.min(0) });
 
 /** Contexto de una cuenta activa (respuesta de POST /cuentas y parte de GET /cuentas/:cuentaId). */
 export const contextoDto = (crudo) => leer(contexto, crudo);
 
-/** `cuentas` de GET /me: primero las activas, luego las pendientes de aceptar. */
-export function cuentasMeDto(crudo) {
-  const { activas, pendientes } = leer(misCuentas, crudo);
-  return [...activas, ...pendientes];
-}
+export const paginaCuentasDto = (crudo) => leer(paginaCuentas, crudo);
+export const invitacionesDto = (crudo) => leer(z.array(pendiente), crudo);
 
 /* ───────────── Cuenta activa ───────────── */
 
@@ -174,8 +169,8 @@ const suscripcion = z.object({
   prueba: z.object({
     gratuita: z.boolean(),
     vigente: z.boolean(),
-    fecha_inicio: fecha.nullable(),
-    fecha_fin: fecha.nullable(),
+    fecha_inicio: instante.nullable(),
+    fecha_fin: instante.nullable(),
     dias_restantes: entero.min(0),
   }),
   plan: planBase.nullable(),

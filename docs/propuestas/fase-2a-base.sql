@@ -22,7 +22,7 @@ alter table cuidared.tipo_cuenta
   add column prueba_limite_familiares integer check (prueba_limite_familiares is null or prueba_limite_familiares > 0);
 
 insert into cuidared.tipo_cuenta (nombre, codigo, prueba_limite_envejecientes, prueba_limite_usuarios, prueba_limite_familiares)
-values ('Familia', 'familia', 2, 4, 2), ('Organización', 'organizacion', 5, 5, null)
+values ('Familia', 'familia', 2, null, 3), ('Organización', 'organizacion', 15, 20, null)
 on conflict (nombre) do update set
   codigo = excluded.codigo,
   prueba_limite_envejecientes = excluded.prueba_limite_envejecientes,
@@ -70,49 +70,13 @@ alter table cuidared.plan
   add column limite_familiares integer check (limite_familiares is null or limite_familiares > 0),
   add column resumen character varying;
 
-insert into cuidared.plan_categoria (nombre) values ('Básico'), ('Premium') on conflict (nombre) do nothing;
-
--- Precios referenciales en DOP (D07: precios, moneda y vigencias siguen pendientes). Límite null = ilimitado.
-insert into cuidared.plan (nombre, plan_categoria_id, tipo_cuenta_id, precio, periodicidad, duracion_dias,
-                           limite_envejecientes, limite_usuarios, limite_familiares, resumen)
-select v.nombre, pc.plan_categoria_id, t.tipo_cuenta_id, v.precio, 'mensual', 30, v.env, v.usu, v.fam, v.resumen
-from (values
-  ('Básico Familiar', 'Básico', 'familia', 650, 2, null, 3,
-   'Hasta 2 adultos mayores y 3 familiares, cuidadores sin límite, alertas estándar y visitas recurrentes.'),
-  ('Cuidado Integral', 'Premium', 'familia', 1450, 6, null, null,
-   'Hasta 6 adultos mayores, familiares y cuidadores sin límite, alertas críticas, historial inmutable y métricas.'),
-  ('Operación Base', 'Básico', 'organizacion', 3500, 15, 20, null,
-   'Hasta 15 adultos mayores y 20 miembros, visitas, necesidades diarias y tablón de notificaciones.'),
-  ('Gestión Comunitaria Avanzada', 'Premium', 'organizacion', 8500, null, null, null,
-   'Adultos mayores y equipo sin límite, clasificación de riesgo completa, necesidades institucionales y reportes avanzados.')
-) as v(nombre, categoria, tipo, precio, env, usu, fam, resumen)
-join cuidared.plan_categoria pc on pc.nombre = v.categoria
-join cuidared.tipo_cuenta t on t.codigo = v.tipo
-on conflict (nombre) do nothing;
-
+-- El catálogo comercial y sus precios se cargarán en fase 8.
 create table cuidared.plan_funcionalidad (
   plan_id smallint not null references cuidared.plan(plan_id),
   funcionalidad character varying not null check (funcionalidad::text ~ '^[a-z_]+$'),
   constraint plan_funcionalidad_pkey primary key (plan_id, funcionalidad)
 );
-insert into cuidared.plan_funcionalidad (plan_id, funcionalidad)
-select p.plan_id, f.funcionalidad
-from (values
-  ('Básico Familiar', 'registro_visitas'), ('Básico Familiar', 'necesidades_diarias'), ('Básico Familiar', 'visitas_recurrentes'),
-  ('Cuidado Integral', 'registro_visitas'), ('Cuidado Integral', 'necesidades_diarias'), ('Cuidado Integral', 'visitas_recurrentes'),
-  ('Cuidado Integral', 'alertas_tiempo_real'), ('Cuidado Integral', 'historial_inmutable'), ('Cuidado Integral', 'dashboard_metricas'),
-  ('Operación Base', 'registro_visitas'), ('Operación Base', 'necesidades_diarias'), ('Operación Base', 'tablon_notificaciones'),
-  ('Operación Base', 'dashboard_metricas'),
-  ('Gestión Comunitaria Avanzada', 'registro_visitas'), ('Gestión Comunitaria Avanzada', 'necesidades_diarias'),
-  ('Gestión Comunitaria Avanzada', 'tablon_notificaciones'), ('Gestión Comunitaria Avanzada', 'dashboard_metricas'),
-  ('Gestión Comunitaria Avanzada', 'visitas_recurrentes'), ('Gestión Comunitaria Avanzada', 'alertas_tiempo_real'),
-  ('Gestión Comunitaria Avanzada', 'riesgo_completo'), ('Gestión Comunitaria Avanzada', 'org_necesidad'),
-  ('Gestión Comunitaria Avanzada', 'reportes_avanzados')
-) as f(plan, funcionalidad)
-join cuidared.plan p on p.nombre = f.plan
-on conflict do nothing;
-
--- Funcionalidades durante la prueba gratuita, por tipo de cuenta.
+-- Funcionalidades del nivel básico durante la prueba gratuita, por tipo de cuenta.
 create table cuidared.prueba_funcionalidad (
   tipo_cuenta_id smallint not null references cuidared.tipo_cuenta(tipo_cuenta_id),
   funcionalidad character varying not null check (funcionalidad::text ~ '^[a-z_]+$'),
@@ -120,7 +84,7 @@ create table cuidared.prueba_funcionalidad (
 );
 insert into cuidared.prueba_funcionalidad (tipo_cuenta_id, funcionalidad)
 select t.tipo_cuenta_id, f.funcionalidad
-from (values ('familia', 'registro_visitas'), ('familia', 'necesidades_diarias'),
+from (values ('familia', 'registro_visitas'), ('familia', 'necesidades_diarias'), ('familia', 'visitas_recurrentes'),
              ('organizacion', 'registro_visitas'), ('organizacion', 'necesidades_diarias'),
              ('organizacion', 'tablon_notificaciones'), ('organizacion', 'dashboard_metricas')) as f(tipo, funcionalidad)
 join cuidared.tipo_cuenta t on t.codigo = f.tipo
@@ -130,13 +94,57 @@ on conflict do nothing;
 
 -- V2: la prueba no es un plan del catálogo. La cuenta en prueba no tiene plan; una suscripción activa sí.
 alter table cuidared.cuenta alter column plan_id drop not null;
+alter table cuidared.cuenta enable row level security;
+revoke all on cuidared.cuenta from public, anon, authenticated;
 alter table cuidared.cuenta alter column suscripcion_estado set default 'prueba';
 alter table cuidared.cuenta add column fecha_fin_vigencia date;
 alter table cuidared.cuenta add constraint ck_cuenta_plan_activa
   check (suscripcion_estado::text <> 'activa' or plan_id is not null);
--- Prueba única de 7 días fijos (decisión 2026-11-06).
+-- Los datos históricos por fecha no contienen la hora real. Requieren una decisión antes de convertirlos.
+do $$
+begin
+  if exists (select 1 from cuidared.cuenta where fecha_inicio_prueba is not null or fecha_fin_prueba is not null) then
+    raise exception 'Hay pruebas históricas por fecha; se requiere conciliación antes de aplicar';
+  end if;
+end $$;
+alter table cuidared.cuenta
+  alter column fecha_inicio_prueba type timestamptz using null::timestamptz,
+  alter column fecha_fin_prueba type timestamptz using null::timestamptz;
+
+-- Ventana automática de 168 horas transcurridas, independiente de la zona horaria.
 alter table cuidared.cuenta add constraint ck_cuenta_prueba_7_dias
-  check (not prueba_gratuita or (fecha_inicio_prueba is not null and fecha_fin_prueba = fecha_inicio_prueba + 7));
+  check ((fecha_inicio_prueba is null and fecha_fin_prueba is null and not prueba_gratuita and suscripcion_estado <> 'prueba')
+      or (prueba_gratuita and fecha_inicio_prueba is not null and fecha_fin_prueba is not null
+          and fecha_fin_prueba - fecha_inicio_prueba = interval '168 hours'));
+
+-- La base real ya usa esta función en el trigger de cuenta. Conservar la validación de plan cuando exista.
+create or replace function cuidared.fn_trg_cuenta_valida_plan() returns trigger
+language plpgsql security definer set search_path = '' as $$
+begin
+  if new.plan_id is null and new.suscripcion_estado <> 'activa' then return new; end if;
+  if not exists (select 1 from cuidared.plan p where p.plan_id = new.plan_id
+                 and p.tipo_cuenta_id = new.tipo_cuenta_id and p.estado = 'activo') then
+    raise check_violation;
+  end if;
+  return new;
+end $$;
+revoke all on function cuidared.fn_trg_cuenta_valida_plan() from public, anon, authenticated;
+create or replace trigger trg_cuenta_valida_plan before insert or update of plan_id, tipo_cuenta_id
+on cuidared.cuenta for each row execute function cuidared.fn_trg_cuenta_valida_plan();
+
+create function cuidared.fn_prueba_inmutable() returns trigger
+language plpgsql set search_path = '' as $$
+begin
+  if new.fecha_inicio_prueba is distinct from old.fecha_inicio_prueba
+     or new.fecha_fin_prueba is distinct from old.fecha_fin_prueba
+     or new.prueba_gratuita is distinct from old.prueba_gratuita then
+    raise check_violation;
+  end if;
+  return new;
+end $$;
+create trigger trg_cuenta_prueba_inmutable before update of fecha_inicio_prueba, fecha_fin_prueba, prueba_gratuita
+on cuidared.cuenta for each row execute function cuidared.fn_prueba_inmutable();
+revoke all on function cuidared.fn_prueba_inmutable() from public, anon, authenticated;
 
 /* ───────────── 4. Membresías y cuidadores ───────────── */
 
@@ -144,9 +152,8 @@ alter table cuidared.cuenta add constraint ck_cuenta_prueba_7_dias
 create unique index uq_membresia_vigente on cuidared.membresia (usuario_id, cuenta_id)
   where estado::text in ('pendiente', 'activa');
 
--- El perfil Cuidador queda ligado a la cuenta donde trabaja (V2: puede trabajar para varias familias/organizaciones).
-alter table cuidared.cuidador add column cuenta_id bigint references cuidared.cuenta(cuenta_id);
-create unique index uq_cuidador_vigente on cuidared.cuidador (usuario_id, cuenta_id) where fecha_fin is null;
+-- Un perfil global por identidad, con alcance derivado de la membresía de cada cuenta.
+create unique index uq_cuidador_usuario on cuidared.cuidador (usuario_id);
 
 /* ───────────── 5. Parámetros (RF-19) ───────────── */
 -- Regla propuesta (D14): configuracion_cuenta.valor > parametro.valor (valor global efectivo); valor_defecto es la
@@ -278,6 +285,7 @@ from (values
   ('coordinador', 'organizacion', 'agenda:ver'),
   ('coordinador', 'organizacion', 'agenda:gestionar'),
   ('coordinador', 'organizacion', 'evidencias:validar'),
+  ('coordinador', 'organizacion', 'cuidadores:gestionar'),
   ('cuidador', 'organizacion', 'adultos:ver'),
   ('cuidador', 'organizacion', 'adultos:ver-sensible'),
   ('cuidador', 'organizacion', 'visitas:ver'),
@@ -346,8 +354,8 @@ create function cuidared_interno.acceso_operativo(p_cuenta_id bigint) returns bo
 language sql stable set search_path = '' as $$
   select coalesce((
     select case c.suscripcion_estado::text
-      when 'prueba' then c.fecha_fin_prueba is not null and c.fecha_fin_prueba >= cuidared_interno.hoy()
-      when 'activa' then c.fecha_fin_vigencia is null or c.fecha_fin_vigencia >= cuidared_interno.hoy()
+      when 'prueba' then pg_catalog.now() >= c.fecha_inicio_prueba and pg_catalog.now() < c.fecha_fin_prueba
+      when 'activa' then c.fecha_fin_vigencia is not null and c.fecha_fin_vigencia >= cuidared_interno.hoy()
       else false end
     from cuidared.cuenta c where c.cuenta_id = p_cuenta_id), false)
 $$;
@@ -409,7 +417,7 @@ $$;
 -- Acciones permitidas sin acceso operativo (cuenta vencida): solo gestionar cuenta y suscripción.
 create function cuidared_interno.accion_sin_acceso_operativo(p_accion text) returns boolean
 language sql immutable set search_path = '' as $$
-  select p_accion in ('cuenta:suscripcion', 'organizacion:configurar', 'usuarios:gestionar')
+  select p_accion = 'cuenta:suscripcion'
 $$;
 
 /*
@@ -439,14 +447,15 @@ $$;
 create function cuidared_interno.contexto(p_cuenta_id bigint, p_usuario_id uuid) returns jsonb
 language sql stable set search_path = '' as $$
   select jsonb_build_object(
-    'cuenta_id', c.cuenta_id,
+    'cuenta_id', c.cuenta_id::text,
     'nombre', c.nombre,
     'tipo', m.tipo,
     'rol', m.rol,
-    'membresia_id', m.membresia_id,
+    'membresia_id', m.membresia_id::text,
     'permisos', to_jsonb(cuidared_interno.permisos(m.rol_id, m.tipo_cuenta_id)),
     'es_titular', c.usuario_titular_id = p_usuario_id,
-    'suscripcion_estado', c.suscripcion_estado,
+    'suscripcion_estado', case when c.suscripcion_estado in ('prueba', 'activa')
+          and not cuidared_interno.acceso_operativo(c.cuenta_id) then 'vencida' else c.suscripcion_estado end,
     'fecha_fin_prueba', c.fecha_fin_prueba,
     'fecha_fin_vigencia', c.fecha_fin_vigencia,
     'plan_id', c.plan_id,
@@ -506,30 +515,75 @@ begin
 end;
 $$;
 
--- Cuentas del usuario para /me (CR-164): activas con su contexto y pendientes de aceptar.
-create function cuidared_api.api_mis_cuentas() returns jsonb
+-- Colección propia de cuentas activas (CR-162). Los nombres de columna y las direcciones salen de una lista cerrada.
+create function cuidared_api.api_mis_cuentas(p_filtros jsonb, p_orden jsonb, p_offset bigint, p_limit integer)
+returns jsonb
+language plpgsql security definer set search_path = '' as $$
+declare
+  v_uid uuid := cuidared_interno.exigir_sesion();
+  v_item jsonb;
+  v_campo text;
+  v_dir text;
+  v_orden text := '';
+  v_vistos text[] := '{}';
+  v_res jsonb;
+begin
+  if jsonb_typeof(p_filtros) is distinct from 'object'
+     or p_filtros - array['tipo_cuenta','suscripcion_estado'] <> '{}'::jsonb
+     or (p_filtros ? 'tipo_cuenta' and not coalesce(p_filtros->>'tipo_cuenta' in ('familia','organizacion'), false))
+     or (p_filtros ? 'suscripcion_estado' and not coalesce(p_filtros->>'suscripcion_estado' in ('prueba','activa','vencida','cancelada','suspendida'), false))
+     or jsonb_typeof(p_orden) is distinct from 'array' or p_offset is null or p_offset < 0
+     or p_limit is null or p_limit not between 1 and 100 then raise invalid_parameter_value; end if;
+
+  for v_item in select value from jsonb_array_elements(p_orden) loop
+    v_campo := v_item->>'field';
+    v_dir := v_item->>'direction';
+    if v_campo is null or v_campo not in ('nombre','fecha_creacion','cuenta_id')
+       or v_campo = any(v_vistos) or v_dir is null or v_dir not in ('asc','desc') then
+      raise invalid_parameter_value;
+    end if;
+    v_vistos := array_append(v_vistos, v_campo);
+    v_orden := v_orden || format('%I %s, ', v_campo, v_dir);
+  end loop;
+  if not ('cuenta_id' = any(v_vistos)) then v_orden := v_orden || 'cuenta_id asc, '; end if;
+  v_orden := left(v_orden, -2);
+  execute format($q$
+    with propias as (
+      select c.cuenta_id, c.nombre, c.fecha_creacion, ctx.datos
+      from cuidared.membresia m join cuidared.cuenta c on c.cuenta_id = m.cuenta_id
+      cross join lateral (select cuidared_interno.contexto(c.cuenta_id, $1) as datos) ctx
+      where m.usuario_id = $1 and m.estado = 'activa' and ctx.datos is not null
+        and ($2 is null or ctx.datos->>'tipo' = $2)
+        and ($3 is null or ctx.datos->>'suscripcion_estado' = $3)
+    ), pagina as (
+      select datos, row_number() over (order by %1$s) as rn
+      from propias order by %1$s limit $4 offset $5
+    )
+    select jsonb_build_object('items', coalesce((select jsonb_agg(datos order by rn) from pagina), '[]'::jsonb),
+                              'total', (select count(*) from propias))
+  $q$, v_orden) into v_res using v_uid, p_filtros->>'tipo_cuenta', p_filtros->>'suscripcion_estado', p_limit, p_offset;
+  return v_res;
+end $$;
+
+create function cuidared_api.api_mis_invitaciones() returns jsonb
 language plpgsql security definer set search_path = '' as $$
 declare v_uid uuid := cuidared_interno.exigir_sesion();
 begin
-  return jsonb_build_object(
-    'activas', coalesce((
-      select jsonb_agg(cuidared_interno.contexto(m.cuenta_id, v_uid) order by m.fecha_inicio desc, m.membresia_id desc)
-      from cuidared.membresia m
-      where m.usuario_id = v_uid and m.estado::text = 'activa'
-        and m.fecha_inicio <= cuidared_interno.hoy() and (m.fecha_fin is null or m.fecha_fin >= cuidared_interno.hoy())), '[]'::jsonb),
-    'pendientes', coalesce((
-      select jsonb_agg(jsonb_build_object('membresia_id', m.membresia_id, 'cuenta_id', c.cuenta_id, 'nombre', c.nombre,
+  return coalesce((
+      select jsonb_agg(jsonb_build_object('membresia_id', m.membresia_id::text, 'cuenta_id', c.cuenta_id::text, 'nombre', c.nombre,
                                           'tipo', t.codigo, 'rol', r.codigo) order by m.membresia_id desc)
       from cuidared.membresia m
       join cuidared.cuenta c on c.cuenta_id = m.cuenta_id
       join cuidared.tipo_cuenta t on t.tipo_cuenta_id = c.tipo_cuenta_id
       join cuidared.rol r on r.rol_id = m.rol_id
-      where m.usuario_id = v_uid and m.estado::text = 'pendiente'), '[]'::jsonb));
+      where m.usuario_id = v_uid and m.estado::text = 'pendiente'), '[]'::jsonb);
 end;
 $$;
 
-revoke all on function cuidared_api.api_contexto_cuenta(bigint), cuidared_api.api_mis_cuentas() from public, anon;
-grant execute on function cuidared_api.api_contexto_cuenta(bigint), cuidared_api.api_mis_cuentas() to authenticated;
+revoke all on function cuidared_api.api_contexto_cuenta(bigint),
+  cuidared_api.api_mis_cuentas(jsonb,jsonb,bigint,integer), cuidared_api.api_mis_invitaciones() from public, anon;
+grant execute on function cuidared_api.api_contexto_cuenta(bigint),
+  cuidared_api.api_mis_cuentas(jsonb,jsonb,bigint,integer), cuidared_api.api_mis_invitaciones() to authenticated;
 
 /* ───────────── 9. Autorregistro: api_sesion deja de exigir invitación ───────────── */
 -- Único cambio respecto de fase 1: se elimina `u.invited_at is not null`. Sigue exigiendo correo confirmado, no

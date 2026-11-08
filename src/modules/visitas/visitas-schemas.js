@@ -81,14 +81,6 @@ const camposRegistro = {
 
 export const registrarVisitaSchema = z.strictObject(camposRegistro);
 
-export const visitaRealizadaSchema = z.strictObject({
-  // Id generado por el cliente: un reintento con el mismo id no duplica la visita (idempotencia).
-  visita_id: uuid.nullish(),
-  fecha: fecha.nullish(),
-  razon: texto(3, 120).nullish(),
-  ...camposRegistro,
-});
-
 export const cancelarVisitaSchema = z.strictObject({ motivo: texto(3, 300) });
 
 export const autorizarSolicitudSchema = z.strictObject({
