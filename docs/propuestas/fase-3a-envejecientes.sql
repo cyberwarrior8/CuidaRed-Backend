@@ -36,18 +36,16 @@ begin;
 -- Perfiles sin cédula (impediría el NOT NULL) y cédulas repetidas (impedirían el índice único):
 --   select envejeciente_id from cuidared.envejeciente where cedula is null;
 --   select cedula, count(*) from cuidared.envejeciente where cedula is not null group by cedula having count(*) > 1;
--- Perfiles existentes sin consentimiento registrado (el CHECK de consentimiento los rechazaría). Si hubiera, completar
--- primero las columnas consentimiento_* y condición general con datos reales; no inventar consentimientos:
---   select count(*) from cuidared.envejeciente;
+-- Los perfiles previos requieren consentimiento verificable. El bloque falla si falta; una preparación separada
+-- y aprobada puede crear las columnas consentimiento_* y cargar sus valores antes de reintentar.
 -- Contactos con más de un principal (impedirían el índice único parcial):
 --   select envejeciente_id from cuidared.contacto_emergencia where es_principal group by envejeciente_id having count(*) > 1;
 -- Perfiles anonimizados (D15, sin política final): comparten cédula placeholder y chocarían con el índice único.
 
 /* ───────────── 1. Esquema: envejeciente ───────────── */
 
--- Cédula obligatoria y única en toda la plataforma (D09 resuelta). El CHECK de formato ya existe en DB.sql.
-alter table cuidared.envejeciente alter column cedula set not null;
-create unique index uq_envejeciente_cedula on cuidared.envejeciente (cedula);
+-- Mantener estables los perfiles y sus contactos hasta instalar las restricciones e índices.
+lock table cuidared.envejeciente, cuidared.contacto_emergencia in access exclusive mode;
 
 alter table cuidared.envejeciente
   -- Ubicación: sector o barrio (la dirección ya existe). Obligatorio al registrar; nulo solo en filas anteriores.
@@ -59,31 +57,69 @@ alter table cuidared.envejeciente
                                 'vivienda', 'aislamiento']::text[]),
   add column nota_condicion character varying check (nota_condicion is null or char_length(nota_condicion) <= 500),
   -- Consentimiento informado (Ley 172-13, CR-158): quién lo otorgó, cuándo y quién lo registró.
-  add column consentimiento_otorgado boolean,
-  add column consentimiento_otorgado_por character varying check (consentimiento_otorgado_por in ('adulto', 'representante')),
-  add column consentimiento_representante character varying
-    check (consentimiento_representante is null or char_length(btrim(consentimiento_representante)) between 2 and 120),
-  add column consentimiento_fecha timestamp with time zone,
-  add column consentimiento_registrado_por uuid references cuidared.usuario(usuario_id),
+  -- Admitir una preparación aprobada que cargue consentimientos verificables antes de este bloque.
+  add column if not exists consentimiento_otorgado boolean,
+  add column if not exists consentimiento_otorgado_por character varying,
+  add column if not exists consentimiento_representante character varying,
+  add column if not exists consentimiento_fecha timestamptz,
+  add column if not exists consentimiento_registrado_por uuid,
   -- Último cambio de estado (CR-172): motivo y fecha.
   add column motivo_estado character varying check (motivo_estado is null or char_length(motivo_estado) between 1 and 200),
   add column fecha_estado timestamp with time zone;
 
--- Sin consentimiento no se guarda un perfil. Si lo otorga un representante, su nombre es obligatorio.
-alter table cuidared.envejeciente add constraint ck_envejeciente_consentimiento check (
+-- Expresar una sola vez la regla de consentimiento para comprobar las filas anteriores y las nuevas.
+alter table cuidared.envejeciente
+  add constraint fk_envejeciente_consentimiento_registrador foreign key (consentimiento_registrado_por)
+    references cuidared.usuario(usuario_id) not valid,
+  add constraint ck_envejeciente_consentimiento check (
   consentimiento_otorgado is true
   and consentimiento_fecha is not null
   and consentimiento_registrado_por is not null
   -- `is not distinct from`: un CHECK que da NULL se acepta, y aquí un otorgante nulo debe rechazarse.
   and ((consentimiento_otorgado_por is not distinct from 'adulto' and consentimiento_representante is null)
-    or (consentimiento_otorgado_por is not distinct from 'representante' and consentimiento_representante is not null)));
+    or (consentimiento_otorgado_por is not distinct from 'representante' and consentimiento_representante is not null
+        and char_length(btrim(consentimiento_representante)) between 2 and 120))) not valid;
+
+do $$
+declare v_invalidas bigint; v_duplicadas bigint; v_contactos bigint;
+begin
+  if not exists (select 1 from pg_attribute
+    where attrelid = 'cuidared.envejeciente'::regclass and attname = 'cedula'
+      and format_type(atttypid, atttypmod) = 'character(11)') then
+    raise exception 'fase-3a: revisar el tipo físico de envejeciente.cedula; se espera character(11)';
+  end if;
+  select count(*) into v_invalidas from cuidared.envejeciente where cedula is null or cedula::text !~ '^[0-9]{11}$';
+  select count(*) into v_duplicadas from (
+    select 1 from cuidared.envejeciente where cedula is not null group by cedula having count(*) > 1
+  ) grupos;
+  select count(*) into v_contactos from (
+    select e.envejeciente_id from cuidared.envejeciente e
+    left join cuidared.contacto_emergencia c on c.envejeciente_id = e.envejeciente_id and c.es_principal
+    group by e.envejeciente_id having count(c.envejeciente_id) <> 1
+  ) perfiles;
+  if v_invalidas + v_duplicadas + v_contactos > 0 then
+    raise exception 'fase-3a: cédulas inválidas o ausentes: %, cédulas duplicadas: %, expedientes sin un único contacto principal: %',
+      v_invalidas, v_duplicadas, v_contactos;
+  end if;
+end $$;
+
+-- El bloque retrocede completo si falta consentimiento verificable o el registrador no existe.
+do $$
+begin
+  alter table cuidared.envejeciente validate constraint ck_envejeciente_consentimiento;
+  alter table cuidared.envejeciente validate constraint fk_envejeciente_consentimiento_registrador;
+exception when check_violation or foreign_key_violation then
+  raise exception 'fase-3a: hay consentimientos incompletos o sin registrador verificable; corregir antes de aplicar';
+end $$;
+alter table cuidared.envejeciente alter column cedula set not null;
+create unique index uq_envejeciente_cedula on cuidared.envejeciente (cedula);
 
 comment on column cuidared.envejeciente.cedula is 'Obligatoria y única en toda la plataforma (D09). 11 dígitos, sin guiones.';
 comment on column cuidared.envejeciente.consentimiento_registrado_por is 'Usuario que registró el consentimiento (trazabilidad, CR-158).';
 
 -- Listados por cuenta (orden por apellidos, nombres, creación) y conteo de activos para el límite del plan.
 create index ix_envejeciente_cuenta_orden on cuidared.envejeciente (cuenta_id, apellidos, nombres, fecha_creacion);
-create index ix_envejeciente_cuenta_estado on cuidared.envejeciente (cuenta_id, estado);
+create index if not exists ix_envejeciente_cuenta_estado on cuidared.envejeciente (cuenta_id, estado);
 
 /* ───────────── 2. Esquema: contacto_emergencia (RF-17) ───────────── */
 
@@ -652,6 +688,7 @@ declare
   v_fecha timestamptz := now();
   v_auto text;
   v_set text;
+  v_filtro text;
 begin
   if p_estado is null or p_estado not in ('activo', 'inactivo', 'fallecido')
      or char_length(coalesce(v_motivo, '')) > 200 or v_motivo ~ '[[:cntrl:]]'
@@ -682,10 +719,12 @@ begin
       case when cuidared_interno.env_tiene_columna('cuidared.tarea_agenda', 'motivo_cancelacion') then 'motivo_cancelacion = $3' end,
       case when cuidared_interno.env_tiene_columna('cuidared.tarea_agenda', 'cancelada_por') then 'cancelada_por = $4' end,
       case when cuidared_interno.env_tiene_columna('cuidared.tarea_agenda', 'actualizado_por') then 'actualizado_por = $4' end);
+    v_filtro := case when cuidared_interno.env_tiene_columna('cuidared.tarea_agenda', 'es_historica')
+                     then ' and not t.es_historica' else '' end;
     execute format($q$
       update cuidared.tarea_agenda t set estado = 'cancelada', fecha_actualizacion = $1%s
-      where t.envejeciente_id = $2 and t.estado in ('pendiente', 'en_progreso')$q$,
-      case when v_set <> '' then ', ' || v_set else '' end)
+      where t.envejeciente_id = $2 and t.estado in ('pendiente', 'en_progreso')%s$q$,
+      case when v_set <> '' then ', ' || v_set else '' end, v_filtro)
       using v_fecha, p_envejeciente_id, left('Cancelada' || v_auto, 500), v_uid;
     get diagnostics v_tareas = row_count;
 
@@ -700,12 +739,14 @@ begin
       case when cuidared_interno.env_tiene_columna('cuidared.visita', 'motivo_cancelacion') then 'motivo_cancelacion = $3' end,
       case when cuidared_interno.env_tiene_columna('cuidared.visita', 'cancelada_por') then 'cancelada_por = $4' end,
       case when cuidared_interno.env_tiene_columna('cuidared.visita', 'fecha_cancelacion') then 'fecha_cancelacion = $1' end);
+    v_filtro := case when cuidared_interno.env_tiene_columna('cuidared.visita', 'cuenta_id')
+                     then ' and v.cuenta_id is not null and v.hora_programada is not null' else '' end;
     execute format($q$
       update cuidared.visita v set estado = 'cancelada', fecha_actualizacion = $1%s
       where v.estado = 'programada'
         and exists (select 1 from cuidared.detalle_visita d where d.visita_id = v.visita_id and d.envejeciente_id = $2)
-        and not exists (select 1 from cuidared.detalle_visita d where d.visita_id = v.visita_id and d.envejeciente_id <> $2)$q$,
-      case when v_set <> '' then ', ' || v_set else '' end)
+        and not exists (select 1 from cuidared.detalle_visita d where d.visita_id = v.visita_id and d.envejeciente_id <> $2)%s$q$,
+      case when v_set <> '' then ', ' || v_set else '' end, v_filtro)
       using v_fecha, p_envejeciente_id, left('Cancelada' || v_auto, 300), v_uid;
     get diagnostics v_visitas = row_count;
   end if;

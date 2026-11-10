@@ -96,7 +96,7 @@ Detalle: [revisión de nombres](catalogos/REVISION-NOMBRES-ONE-2021.md) e [infor
 
 ## CUIDARED-005 — Propuesta integrada de fases 2 a 4
 
-**Estado: propuesta revisable sin aplicar.** Sustituye los borradores del inventario anterior. [Contratos y recorrido](INTEGRACION-FASES-2-A-4.md).
+**Estado: propuesta revisable sin aplicar.** Sustituye los borradores del inventario anterior. CUIDARED-006 actualiza el tratamiento de datos históricos. [Contratos y recorrido](INTEGRACION-FASES-2-A-4.md).
 
 | Bloque           | Archivos y cambios                                                                                                                                                                                                                                                                                                                                                                     | Precondiciones y verificación                                                                                                                                                                                                                                 |
 | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -107,3 +107,35 @@ Detalle: [revisión de nombres](catalogos/REVISION-NOMBRES-ONE-2021.md) e [infor
 **Aprobación y ejecución.** Los acuerdos funcionales permiten preparar el código. La aplicación de los nueve bloques de SQL, la activación de registro por correo y los cambios de Storage requieren aprobación sobre esta propuesta y verificación en un entorno autorizado. Solo se usó PostgreSQL en memoria con datos sintéticos y consultas de metadatos de solo lectura contra Supabase.
 
 **Reversión.** Cada bloque usa una transacción. Ante incompatibilidad, abortar el bloque y revisar los ya aplicados antes de reintentar. Una vez existan cuentas, autorizaciones o archivos, cualquier reversión debe conservar datos e historial, restaurar los triggers y permisos anteriores según una propuesta específica y desactivar primero las rutas afectadas. No borrar tablas ni volver a fechas sin hora como reversión automática.
+
+## CUIDARED-006 — Conservación de datos previos en fases 2 a 4
+
+**Estado: diseño validado localmente.** La aplicación se registra en CUIDARED-007. El usuario confirmó conservar las fechas históricas de prueba, detener el bloque de expedientes ante datos no verificables y preservar en modo de consulta las tareas y evidencias anteriores. Las visitas sin una cuenta verificable quedan fuera de las consultas de cuenta.
+
+- [2a](propuestas/fase-2a-base.sql), [2c](propuestas/fase-2c-miembros.sql) y [3b](propuestas/fase-3b-seguimiento.sql). Se preservan las fechas de prueba por calendario y se exige un periodo exacto para habilitar acceso por prueba. `vinculo` conserva cada periodo con una PK propia. Cambiar de rol registra la revocación y una nueva autorización crea una fila.
+- [3a](propuestas/fase-3a-envejecientes.sql). Se comprueban tipo y formato de cédula, duplicados, contacto principal y consentimiento. Ante un defecto, se revierte el bloque. Las correcciones de expedientes existentes se preparan y aprueban por separado.
+- [4a](propuestas/fase-4a-visitas.sql) y [4b](propuestas/fase-4b-agenda.sql). Las visitas ambiguas se conservan fuera de las cuentas, incluido el historial del adulto. Las tareas y evidencias previas se marcan como históricas. Las políticas de Storage impiden descargar archivos históricos aunque se conozca su ruta.
+
+**Verificación.** Nueve bloques y regresiones de integración probados en PostgreSQL local en memoria con datos sintéticos previos. Se comprobó el rollback del bloque 3a ante cédula ausente, duplicados, contacto principal faltante y consentimiento incompleto. Auth y Storage usaron simulaciones locales. El [inventario técnico](PROPUESTA-SCHEMA-CUIDARED-FASES-2-A-4.md) detalla columnas, funciones, triggers y precondiciones.
+
+## CUIDARED-007 — Aplicación de fases 2 a 4 en Supabase
+
+**Estado al 09/11/2026.** Los nueve bloques de fases 2 a 4 están aplicados y registrados en Supabase CuidaRed. El usuario autorizó la aplicación y los ajustes de compatibilidad detectados en el proyecto. La inspección previa encontró 32 provincias, 158 municipios y tablas operativas vacías.
+
+| Bloque | Migración registrada                                                                                            |
+| ------ | --------------------------------------------------------------------------------------------------------------- |
+| 2a     | [20261109041338_fase_2a_base](../supabase/migrations/20261109041338_fase_2a_base.sql)                           |
+| 2b     | [20261109041405_fase_2b_cuentas](../supabase/migrations/20261109041405_fase_2b_cuentas.sql)                     |
+| 2c     | [20261109041415_fase_2c_miembros](../supabase/migrations/20261109041415_fase_2c_miembros.sql)                   |
+| 3a     | [20261109042249_fase_3a_envejecientes](../supabase/migrations/20261109042249_fase_3a_envejecientes.sql)         |
+| 3b     | [20261109042254_fase_3b_seguimiento](../supabase/migrations/20261109042254_fase_3b_seguimiento.sql)             |
+| 4a     | [20261109042259_fase_4a_visitas](../supabase/migrations/20261109042259_fase_4a_visitas.sql)                     |
+| 4b     | [20261109042302_fase_4b_agenda](../supabase/migrations/20261109042302_fase_4b_agenda.sql)                       |
+| 4c     | [20261109042306_fase_4c_sync](../supabase/migrations/20261109042306_fase_4c_sync.sql)                           |
+| 4d     | [20261109042310_fase_4d_evidencias_visita](../supabase/migrations/20261109042310_fase_4d_evidencias_visita.sql) |
+
+**Compatibilidad.** 2a reemplazó la regla anterior de prueba y reconoció la PK histórica de `vinculo`. El primer intento de 3a se revirtió por un índice preexistente. Se comprobó la ausencia de sus columnas antes del reintento. Los bloques 3a, 4a y 4b reutilizaron tres índices equivalentes. 4b creó `ix_evidencia_tarea_estado` y conservó el índice simple. 4a reemplazó la restricción de horas para admitir inicio y fin iguales.
+
+**Verificación.** Las nueve copias locales coinciden por MD5 con el historial de Supabase. La [prueba transaccional](verificacion/fases-2-a-4-supabase.sql) confirmó perfil, alta con 168 horas, membresía, perfil de cuidador, expediente, programación de visitas, sincronización idempotente, recurrencia y autorización de evidencias. Las filas de prueba se revirtieron. Se comprobaron RLS y ausencia de acceso directo para las siete tablas nuevas, el bucket privado de 5 MB con cuatro políticas y la exposición limitada a `cuidared_api`. Las RPC representativas de cada fase devolvieron 401 por HTTPS sin sesión. Las funciones públicas de solicitudes permanecen revocadas. Las pruebas simularon las sesiones y comprobaron permisos de Storage sin subir archivos.
+
+**Configuración de Auth.** Con aprobación separada, se habilitó el registro por correo en Supabase y se guardó la plantilla «Confirma tu correo en CuidaRed» con `{{ .Token }}`. El panel confirmó el requisito de confirmar el correo, códigos de 6 dígitos y vigencia de 900 segundos. La comprobación de entrega del correo corresponde a la prueba desde la aplicación.

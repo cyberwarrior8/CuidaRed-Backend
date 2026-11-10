@@ -476,11 +476,13 @@ begin
   values (v_m.usuario_id, p_cuenta_id, v_rol_id, 'activa', cuidared_interno.hoy())
   returning membresia_id into v_nueva;
 
-  -- D04: sin arrastrar accesos del rol anterior (solo adultos de esta cuenta; el vínculo «referente» no depende del rol).
-  delete from cuidared.vinculo v
-   using cuidared.envejeciente e, cuidared.tipo_vinculo tv
+  -- D04: conservar el historial y revocar solo accesos incompatibles de esta cuenta.
+  update cuidared.vinculo v
+     set fecha_revocacion = clock_timestamp(), motivo_revocacion = 'Cambio de rol'
+    from cuidared.envejeciente e, cuidared.tipo_vinculo tv
    where v.envejeciente_id = e.envejeciente_id and e.cuenta_id = p_cuenta_id and v.usuario_id = v_m.usuario_id
      and tv.tipo_vinculo_id = v.tipo_vinculo_id
+     and v.fecha_revocacion is null
      and tv.codigo::text in ('cuidador_asignado', 'voluntario_asignado', 'familiar_responsable')
      and tv.codigo::text is distinct from case p_rol when 'cuidador' then 'cuidador_asignado'
                                                      when 'voluntario' then 'voluntario_asignado'

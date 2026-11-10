@@ -1,5 +1,17 @@
 # Cambios actuales
 
+## 09/11/2026 — Fases 2 a 4 aplicadas en Supabase
+
+- Se aplicaron los nueve bloques y se archivaron en `supabase/migrations/`. Los ajustes de compatibilidad conservaron los índices equivalentes, reemplazaron las reglas anteriores de prueba y horas de visita, y permitieron reconocer la PK original de `vinculo`.
+- La verificación de cuentas, expedientes, visitas, sincronización y agenda pasó en el proyecto Supabase mediante una transacción con datos sintéticos revertidos. El registro de permisos y versiones está en [CUIDARED-007](docs/CAMBIOS-SCHEMA-CUIDARED.md#cuidared-007--aplicación-de-fases-2-a-4-en-supabase).
+- Se habilitó en Auth el autorregistro con confirmación por correo. La plantilla de alta usa el código de seis dígitos con vigencia de quince minutos.
+
+## 08/11/2026 — Revisión de las propuestas de esquema para fases 2 a 4
+
+- Los SQL de 2a, 2c y 3b conservan las fechas de prueba previas y los periodos de asignación y autorización. El bloque 3a valida cédulas, contactos y consentimientos antes de confirmar sus cambios.
+- Los bloques 4a y 4b aíslan las visitas sin cuenta verificable y preservan la agenda y evidencias anteriores. El servicio de agenda devuelve el historial sin firmar enlaces de archivos históricos.
+- El [inventario del esquema](docs/PROPUESTA-SCHEMA-CUIDARED-FASES-2-A-4.md) detalla las siete tablas nuevas y los campos, funciones y triggers propuestos. Validación con 1,068 pruebas del backend y regresiones PostgreSQL con datos sintéticos previos. [Registro CUIDARED-006](docs/CAMBIOS-SCHEMA-CUIDARED.md#cuidared-006--conservación-de-datos-previos-en-fases-2-a-4).
+
 ## 07/11/2026 — Integración de fases 2 a 4
 
 - Perfil independiente de las RPC de cuentas, colecciones propias paginadas, contexto por cuenta e IDs bigint como texto en los módulos integrados.

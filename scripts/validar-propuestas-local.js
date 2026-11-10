@@ -6,7 +6,7 @@
  *   1. docs/verificacion/local/supabase-stub.sql  (esquema auth y roles simulados)
  *   2. docs/DB.sql                                (modelo base; se corrigen los `character` sin longitud)
  *   3. docs/verificacion/local/trigger-perfil-stub.sql
- *   4. supabase/migrations/*.sql                  (fase 1 aplicada)
+ *   4. supabase/migrations/*.sql                  (migraciones base previas a las propuestas)
  *   5. docs/propuestas/fase-2a-* a fase-4d-*      (bloques de esquema, sin la carga territorial), en orden
  *   6. docs/verificacion/local/pruebas-*.sql      (cada una dentro de una transacción con ROLLBACK)
  * y borra la base al final (salvo --conservar). NUNCA apunta al proyecto Supabase: se niega si PGHOST no es local.
@@ -32,6 +32,8 @@ const soloIntegracion = !soloArg || soloArg === '--solo=integracion';
 const solo =
   soloArg && !soloIntegracion ? ['2a', '00', ...soloArg.slice(7).split(',').filter(Boolean)] : null;
 const incluido = (codigo) => !solo || solo.some((p) => codigo.startsWith(p));
+const esMigracionBase = (nombre) =>
+  nombre.endsWith('.sql') && !/^\d{14}_fase_(2[abc]|3[ab]|4[abcd])_/.test(nombre);
 const esPruebaSeleccionada = (n) =>
   /^pruebas-.*\.sql$/.test(n) &&
   (soloIntegracion
@@ -88,8 +90,15 @@ try {
     join(raiz, 'docs/verificacion/local/trigger-perfil-stub.sql'),
     'trigger de perfil (stub)',
   );
-  for (const f of ordenados(join(raiz, 'supabase/migrations'), (n) => n.endsWith('.sql')))
+  // Las fases 2 a 4 se prueban desde las propuestas, aunque sus versiones aplicadas también estén archivadas.
+  for (const f of ordenados(join(raiz, 'supabase/migrations'), esMigracionBase))
     ejecutarArchivo(f, f.slice(raiz.length));
+  if (soloIntegracion) {
+    ejecutarArchivo(
+      join(raiz, 'docs/verificacion/local/datos-previos-integracion.sql'),
+      'datos previos de integración',
+    );
+  }
   for (const f of ordenados(
     join(raiz, 'docs/propuestas'),
     (n) => /^fase-(2[abc]|3[ab]|4[abcd])-.*\.sql$/.test(n) && incluido(n.slice(5)),

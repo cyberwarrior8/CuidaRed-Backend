@@ -25,7 +25,43 @@ declare
   meta jsonb := '{"nombre_archivo":"prueba.png","tipo_mime":"image/png","tamano_bytes":24}';
   ruta text;
   op jsonb;
+  titular_historico uuid := 'a1000000-0000-4000-8000-000000000001';
+  adulto_historico uuid := 'a1000000-0000-4000-8000-000000000002';
+  visita_identificada uuid := 'a1000000-0000-4000-8000-000000000004';
+  visita_ambigua uuid := 'a1000000-0000-4000-8000-000000000005';
+  tarea_historica uuid := 'a1000000-0000-4000-8000-000000000006';
+  cuenta_historica bigint;
+  prueba_historica_id bigint;
+  evidencia_historica uuid;
 begin
+  select cuenta_id into cuenta_historica from cuidared.cuenta where nombre = 'Cuenta histórica';
+  select cuenta_id into prueba_historica_id from cuidared.cuenta where nombre = 'Prueba histórica';
+  perform pruebas.afirmar((select prueba_historica and fecha_inicio_prueba_historica = date '2025-01-01'
+    and fecha_fin_prueba_historica = date '2025-01-08' and fecha_inicio_prueba is null and fecha_fin_prueba is null
+    from cuidared.cuenta where cuenta_id = prueba_historica_id), 'se conservan las fechas históricas sin inferir hora');
+  perform pruebas.afirmar(not cuidared_interno.acceso_operativo(prueba_historica_id), 'la prueba histórica no concede acceso operativo');
+  perform pruebas.miembro(prueba_historica_id, titular_historico, 'coordinador');
+  perform pruebas.miembro(cuenta_historica, titular_historico, 'coordinador');
+  perform pruebas.como(titular_historico);
+  perform pruebas.afirmar((cuidared_api.api_contexto_cuenta(prueba_historica_id)->>'acceso_operativo')::boolean = false,
+    'el gestor conserva la consulta de su cuenta histórica');
+  update cuidared.cuenta set fecha_fin_vigencia = cuidared_interno.hoy() + 1 where cuenta_id = cuenta_historica;
+  perform pruebas.afirmar((select cuenta_id = cuenta_historica from cuidared.visita where visita_id = visita_identificada),
+    'identifica una visita de una sola cuenta');
+  perform pruebas.afirmar((select cuenta_id is null from cuidared.visita where visita_id = visita_ambigua), 'conserva visita ambigua sin cuenta');
+  perform pruebas.afirmar(not cuidared_interno.visita_visible(cuenta_historica, visita_ambigua, titular_historico), 'oculta visita ambigua');
+  perform pruebas.error(format('update cuidared.detalle_visita set observacion = null where visita_id = %L',visita_ambigua),'23514');
+  perform pruebas.afirmar((select count(*) = 1 from cuidared_interno.historial_eventos(adulto_historico, true, false, true, false, false)),
+    'el historial solo devuelve la visita identificada');
+  perform pruebas.afirmar((cuidared_api.api_tarea_obtener(cuenta_historica, tarea_historica)->>'es_historica')::boolean,
+    'la tarea histórica se puede consultar');
+  select evidencia_id, archivo_url into evidencia_historica, ruta from cuidared.evidencia where tarea_agenda_id = tarea_historica;
+  respuesta := cuidared_api.api_evidencias_listar(cuenta_historica, tarea_historica)->0;
+  perform pruebas.afirmar((respuesta->>'es_historica')::boolean and not (respuesta ? 'ruta'), 'metadatos históricos sin ruta');
+  perform pruebas.afirmar(not cuidared_storage.evidencia_permitida(ruta, 'ver'), 'Storage rechaza incluso una ruta histórica conocida');
+  perform pruebas.error(format('update cuidared.tarea_agenda set estado = ''pendiente'' where tarea_agenda_id = %L',tarea_historica),'23514');
+  perform pruebas.error(format('delete from cuidared.evidencia where evidencia_id = %L',evidencia_historica),'23514');
+
   insert into cuidared.provincia values ('01','Distrito Nacional') on conflict do nothing;
   insert into cuidared.municipio values ('0101','Santo Domingo de Guzmán','01') on conflict do nothing;
   select cat.categoria_cuenta_id into categoria from cuidared.categoria_cuenta cat
@@ -105,7 +141,23 @@ begin
   tarea := (respuesta->'tareas'->0->>'tarea_id')::uuid;
   perform pruebas.como(cuidador);
   perform pruebas.error(format('select cuidared_api.api_tarea_completar(%s,%L)',cuenta,tarea),'P0001','CR_EVIDENCIA_REQUERIDA');
+  ruta := cuidared_api.api_evidencia_preparar_subida(cuenta,tarea,meta)->>'ruta';
+  perform pruebas.afirmar(cuidared_storage.evidencia_permitida(ruta, 'subir'), 'la evidencia operativa admite subida');
+  perform pruebas.afirmar(not cuidared_storage.evidencia_permitida(ruta, 'ver'), 'una ruta sin evidencia registrada no permite lectura');
+  insert into storage.objects(bucket_id,name,owner_id,metadata)
+  values ('evidencias',ruta,cuidador::text,'{"size":24,"mimetype":"image/png"}');
+  perform cuidared_api.api_evidencia_registrar(cuenta,tarea,meta || jsonb_build_object('ruta',ruta));
+  perform pruebas.afirmar(cuidared_storage.evidencia_permitida(ruta, 'ver'), 'la evidencia operativa registrada conserva su descarga');
   perform pruebas.como(titular);
+  select membresia_id into miembro from cuidared_interno.membresia_activa(cuenta, cuidador);
+  perform cuidared_api.api_cambiar_rol_miembro(cuenta, miembro, 'familiar');
+  perform pruebas.afirmar(exists(select 1 from cuidared.vinculo where envejeciente_id = adulto and usuario_id = cuidador
+    and fecha_revocacion is not null and motivo_revocacion = 'Cambio de rol' and autorizado_por_usuario_id = titular),
+    'el cambio de rol conserva el vínculo y su autoría');
+  perform pruebas.afirmar(not cuidared_interno.alcanza_envejeciente(cuenta, adulto, cuidador), 'el nuevo rol no hereda acceso');
+  perform cuidared_api.api_familiar_autorizar(cuenta, adulto, cuidador);
+  perform pruebas.afirmar((select count(*) = 2 and count(*) filter (where fecha_revocacion is null) = 1
+    from cuidared.vinculo where envejeciente_id = adulto and usuario_id = cuidador), 'una autorización nueva conserva el periodo cerrado');
   miembro := pruebas.miembro(cuenta,gestor,'coordinador');
   perform cuidared_api.api_transferir_titularidad(cuenta,miembro);
   perform pruebas.afirmar((select c.usuario_titular_id = gestor from cuidared.cuenta c where c.cuenta_id = cuenta),'transferencia confirmada');

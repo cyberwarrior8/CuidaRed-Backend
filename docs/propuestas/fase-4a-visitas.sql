@@ -108,18 +108,31 @@ update cuidared.visita v set cuenta_id = x.cuenta_id
 from (
   select d.visita_id, min(e.cuenta_id) as cuenta_id
   from cuidared.detalle_visita d join cuidared.envejeciente e on e.envejeciente_id = d.envejeciente_id
-  group by d.visita_id having count(distinct e.cuenta_id) = 1
+  group by d.visita_id having count(distinct e.cuenta_id) = 1 and count(e.cuenta_id) = count(*)
 ) x
 where v.visita_id = x.visita_id and v.cuenta_id is null;
 
 -- Obligatorias para las filas nuevas; las existentes sin cuenta (ambiguas) no se validan. Se validan solas si no quedan.
 alter table cuidared.visita
+  drop constraint if exists ck_visita_horas,
   add constraint ck_visita_cuenta check (cuenta_id is not null) not valid,
   add constraint ck_visita_cancelacion check (estado::text <> 'cancelada' or (motivo_cancelacion is not null and cancelada_por is not null)) not valid,
   add constraint ck_visita_horas check (hora_inicio is null or hora_fin is null or hora_fin >= hora_inicio) not valid;
-do $$ begin
-  if not exists (select 1 from cuidared.visita where cuenta_id is null) then
+do $$
+declare v_sin_cuenta bigint;
+begin
+  select count(*) into v_sin_cuenta from cuidared.visita where cuenta_id is null;
+  if v_sin_cuenta = 0 then
     alter table cuidared.visita validate constraint ck_visita_cuenta;
+  else
+    raise notice 'fase-4a: % visitas históricas sin cuenta verificable; se conservan fuera de las cuentas', v_sin_cuenta;
+  end if;
+  if not exists (select 1 from cuidared.visita where estado = 'cancelada'
+                 and (motivo_cancelacion is null or cancelada_por is null)) then
+    alter table cuidared.visita validate constraint ck_visita_cancelacion;
+  end if;
+  if not exists (select 1 from cuidared.visita where hora_fin < hora_inicio) then
+    alter table cuidared.visita validate constraint ck_visita_horas;
   end if;
 end $$;
 
@@ -157,20 +170,20 @@ alter table cuidared.detalle_visita
 alter table cuidared.detalle_visita
   add constraint fk_detalle_visita_registrado_por foreign key (registrado_por) references cuidared.usuario(usuario_id);
 create index ix_detalle_visita_envejeciente on cuidared.detalle_visita (envejeciente_id);
-create index ix_registro_visita_usuario on cuidared.registro_visita (usuario_id);
+create index if not exists ix_registro_visita_usuario on cuidared.registro_visita (usuario_id);
 
 -- Aislamiento: el adulto de un detalle pertenece a la misma cuenta que la visita.
 create function cuidared_interno.trg_detalle_visita_misma_cuenta() returns trigger
 language plpgsql set search_path = '' as $$
 begin
-  if exists (
+  if not exists (
     select 1 from cuidared.visita v join cuidared.envejeciente e on e.envejeciente_id = new.envejeciente_id
-    where v.visita_id = new.visita_id and v.cuenta_id is not null and v.cuenta_id <> e.cuenta_id) then
+    where v.visita_id = new.visita_id and v.cuenta_id = e.cuenta_id) then
     raise exception 'El adulto no pertenece a la cuenta de la visita' using errcode = '23514';
   end if;
   return new;
 end $$;
-create trigger trg_detalle_visita_misma_cuenta before insert or update of visita_id, envejeciente_id on cuidared.detalle_visita
+create trigger trg_detalle_visita_misma_cuenta before insert or update on cuidared.detalle_visita
   for each row execute function cuidared_interno.trg_detalle_visita_misma_cuenta();
 
 -- Sin acceso directo a las tablas de visitas: solo a través de las RPC.
@@ -798,8 +811,7 @@ begin
     select * into v_m from cuidared_interno.membresia_activa(p_cuenta_id, v_p);
     if v_m.rol in ('cuidador', 'voluntario') then
       foreach v_a in array v_adultos loop
-        -- Sin vínculo vigente (no existe o fue revocado) se crea o renueva: 3b registra a quien programa como autorizador y
-        -- limpia la revocación (RF-12/RF-13). Para estos roles, alcanza_envejeciente equivale a «vínculo vigente del tipo».
+        -- Si falta un vínculo vigente, 3b abre un nuevo periodo y registra a quien programa como autorizador (RF-12/RF-13).
         if not cuidared_interno.alcanza_envejeciente(p_cuenta_id, v_a, v_p) then
           if not cuidared_interno.tiene_permiso(p_cuenta_id, v_uid, 'adultos:asignar') then
             raise insufficient_privilege;

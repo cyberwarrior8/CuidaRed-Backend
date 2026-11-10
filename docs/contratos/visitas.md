@@ -58,7 +58,7 @@ Orden de `/visitas`: `fecha`, `hora_programada`, `estado`, `fecha_creacion`, `vi
 - `fecha` no anterior a hoy (fecha de negocio de República Dominicana) y, si es hoy, `hora_programada` no pasada; `razon` de 3 a 120 caracteres.
 - `envejeciente_ids`: adultos **activos** de la cuenta y al alcance de quien programa, sin repetir. Un adulto de otra cuenta o inexistente responde 403 igual.
 - `participante_ids`: miembros activos con rol cuidador, voluntario o coordinador (el Administrador y el Familiar no participan), sin repetir. Otro caso: `CR_PARTICIPANTE_INVALIDO`. Un participante con otra visita no cancelada a la misma fecha y hora: `CR_PARTICIPANTE_OCUPADO`.
-- Si a un cuidador o voluntario le falta el vínculo **vigente** con un adulto (no existe o fue revocado), se crea o renueva con `cuidared_interno.seg_vincular` de 3b, que registra a quien programa como autorizador y limpia la revocación; eso exige `adultos:asignar`, que tiene el gestor.
+- Si a un cuidador o voluntario le falta un vínculo vigente con un adulto, `cuidared_interno.seg_vincular` abre un periodo y registra a quien programa como autorizador. El permiso `adultos:asignar` es obligatorio. Los periodos revocados se conservan.
 - Crea `registro_visita` con `autorizada_por_usuario_id = actor` para cada participante y un `detalle_visita` por adulto. El actor, el autorizador y la cuenta nunca se aceptan del cuerpo.
 
 ### Registrar la realización

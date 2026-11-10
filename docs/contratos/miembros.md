@@ -100,7 +100,7 @@ Solo la persona invitada y solo sobre su membresía **pendiente** (la de otra pe
 
 ### Cambiar rol (V2: historial)
 
-`PATCH` cierra la membresía actual (`inactiva`, `fecha_fin` = hoy) y crea otra `activa` con el nuevo rol; devuelve la nueva. En la misma transacción se **revocan los vínculos de acceso del rol anterior** (`cuidador_asignado`, `voluntario_asignado`, `familiar_responsable` que no correspondan al nuevo rol) sobre los adultos **de esa cuenta**; el vínculo `referente` y los de otras cuentas no se tocan. Si el rol anterior era `cuidador`, se finaliza su perfil Cuidador de esa cuenta. Solo se pueden cambiar membresías `activa`. Protecciones: no sobre la membresía propia (`CR_MEMBRESIA_PROPIA`); el titular conserva un rol gestor (`CR_TITULAR_PROTEGIDO`); siempre queda al menos un gestor activo (`CR_ULTIMO_GESTOR`). Se exige cupo solo si el cambio **aumenta** el uso (p. ej. Voluntario → Cuidador); pasar de un rol que ya cuenta a otro no lo exige.
+`PATCH` cierra la membresía actual con estado `inactiva` y fecha de fin, crea otra `activa` y devuelve la nueva. En la misma transacción registra fecha y motivo de revocación en los vínculos vigentes incompatibles del usuario sobre adultos de esa cuenta. El perfil global de Cuidador se conserva. El cambio exige una membresía activa, protege la membresía propia (`CR_MEMBRESIA_PROPIA`) y el rol gestor del titular (`CR_TITULAR_PROTEGIDO`), y requiere conservar al menos un gestor activo (`CR_ULTIMO_GESTOR`). Se comprueba el cupo cuando el cambio aumenta su uso.
 
 ### Desactivar y reactivar
 
@@ -170,9 +170,9 @@ También se activa RLS y se revoca el acceso directo de `authenticated` a `membr
 
 - **D07** límites: voluntarios fuera de `usuarios`; familiares dentro de `usuarios` y `familiares`; las invitaciones pendientes reservan cupo; aceptar vuelve a comprobarlo.
 - **D09** una membresía vigente por persona y cuenta y un perfil Cuidador vigente por persona y cuenta; serialización por cuenta.
-- **D04** al cambiar de rol se revocan los vínculos de acceso del rol anterior y se finaliza el perfil Cuidador; al desactivar se conservan (el acceso se corta por la membresía); listado y detalle exigen `usuarios:gestionar`.
+- **D04** el cambio de rol revoca los vínculos incompatibles. Una baja de membresía corta el acceso de inmediato. Listado y detalle exigen `usuarios:gestionar`.
 - **D14** aviso personal a la persona invitada (con nombre de cuenta y rol, sin datos de adultos); empleador del Cuidador no independiente = titular.
-- **D15** desactivar y cambiar de rol conservan el historial; nada se borra salvo los vínculos de acceso del rol anterior.
+- **D15** la baja y el cambio de rol conservan el historial de membresías y vínculos.
 - Reactivar no distingue una invitación rechazada de una baja: la membresía más reciente inactiva se reactiva con su rol.
 
 ## Verificación

@@ -47,7 +47,7 @@ Los permisos resultan de la matriz de la fase 2 (`src/modules/cuentas/permisos.j
 ### Asignaciones y permiso familiar (RF-12, RF-13)
 
 - **Consultar.** Los gestores (`adultos:asignar` o `familiares:autorizar`) reciben `cuidadores`, `voluntarios` y `familiares`, cada uno con `{ envejeciente_id, usuario_id, tipo, nombres, apellidos, autorizado_por_usuario_id, fecha_autorizacion }`. El resto recibe solo `cuidadores` y `voluntarios` con `{ nombres, apellidos }` (sin ids, contacto ni familiares). Solo aparecen vínculos vigentes de quien conserva su membresía activa con el rol esperado.
-- **Asignar.** El usuario debe tener una **membresía activa con el rol correspondiente** en la cuenta (cuidador para `cuidador_asignado`, voluntario para `voluntario_asignado`) o se responde 422 `ROLE_NOT_COMPATIBLE` (no se distingue «no existe»). El voluntario solo existe en Organización: en Familia, 422 `ROLE_NOT_ALLOWED`. La PK `(envejeciente, usuario)` permite un único vínculo por pareja: **reasignar actualiza la fila**, registra al nuevo autorizador y limpia la revocación; si ya está vigente con el mismo tipo no cambia nada. Todos los cuidadores asignados están al mismo nivel (sin cuidador principal).
+- **Asignar.** El usuario necesita una membresía activa con el rol correspondiente en la cuenta. Un rol incompatible devuelve 422 `ROLE_NOT_COMPATIBLE`. El rol Voluntario solo está disponible en Organización. Un índice permite un solo vínculo vigente por pareja. Reasignar abre un periodo y conserva el anterior. Repetir una asignación vigente y explícita del mismo tipo conserva la fila. Todos los cuidadores asignados están al mismo nivel.
 - **Autorizar familiar.** Debe ser un miembro activo con rol familiar (422 `ROLE_NOT_COMPATIBLE`). El permiso es por adulto, lo registra quien autoriza y es revocable.
 - **Revocar.** Conserva fila, fecha y motivo (`fecha_revocacion`, `motivo_revocacion`); el acceso se pierde de inmediato. Revocar algo inexistente, ya revocado o de otro tipo es 404.
 - Un adulto no activo no admite asignaciones nuevas (409 `ADULT_INACTIVE`); revocar siempre se permite.
@@ -160,7 +160,7 @@ Públicos según CR-162. Los códigos `CR_*` de las RPC se registran en `src/mod
 
 `docs/propuestas/fase-3b-seguimiento.sql`, sobre `fase-2a-base.sql`:
 
-- **`vinculo`**: `autorizado_por_usuario_id`, `fecha_autorizacion` (no nula; los vínculos previos se tratan como concedidos al crearse), `fecha_revocacion`, `motivo_revocacion`; `alcanza_envejeciente` se reemplaza (misma firma y semántica) y exige `fecha_revocacion is null`.
+- El bloque 2a agrega `vinculo_id`, autoría, fecha de autorización y datos de revocación. `alcanza_envejeciente` exige un vínculo vigente a Cuidador y Voluntario. Para Familiar exige además un autorizador registrado. Las fechas de creación previas se conservan como tales.
 - **`evaluacion_riesgo`** (tabla nueva, RLS y `revoke`): `evaluacion_riesgo_id`, `envejeciente_id`, `respuestas jsonb`, `puntaje smallint` (0–100), `desglose jsonb`, `nivel_riesgo_id`, `version_cuestionario`, `envejeciente_riesgo_id` (factor que la generó), `usuario_id`, `fecha`.
 - **`envejeciente_riesgo`**: `registrado_por`, `fecha_resolucion`, `resuelto_por` e índice único parcial: **un solo factor activo por adulto y tipo de factor**.
 - **`indicacion_medica`**: `registrado_por`, `actualizado_por`.

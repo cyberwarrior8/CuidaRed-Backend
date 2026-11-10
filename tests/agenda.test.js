@@ -807,6 +807,20 @@ describe('RS-013: descarga de evidencias con URL firmada de 5 minutos', () => {
     });
     await api(app, 'get', `/tareas/${tareaId}/evidencias`).expect(503);
   });
+
+  it('devuelve la evidencia histórica sin ruta ni enlace de descarga', async () => {
+    const { app, bucket } = setup({
+      respuestas: { api_evidencias_listar: [fila(undefined, { es_historica: true })] },
+    });
+    const res = await api(app, 'get', `/tareas/${tareaId}/evidencias`).expect(200);
+    expect(res.body.data[0]).toMatchObject({
+      es_historica: true,
+      url_descarga: null,
+      url_expira_en: null,
+    });
+    expect(res.body.data[0]).not.toHaveProperty('ruta');
+    expect(bucket.signedDownloadUrl).not.toHaveBeenCalled();
+  });
 });
 
 describe('D12: validar y rechazar evidencias', () => {

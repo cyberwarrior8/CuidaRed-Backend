@@ -44,21 +44,7 @@ insert into cuidared.riesgo (nombre, descripcion, codigo)
 values ('Evaluación de riesgo', 'Resultado del cuestionario de evaluación de riesgo social (100 puntos).', 'evaluacion')
 on conflict (nombre) do update set codigo = coalesce(cuidared.riesgo.codigo, excluded.codigo);
 
-/* ───────────── 2. Vínculo: permiso explícito, autoría y revocación (RF-12, RF-13) ───────────── */
-
-alter table cuidared.vinculo
-  add column if not exists autorizado_por_usuario_id uuid references cuidared.usuario(usuario_id),
-  add column if not exists fecha_autorizacion timestamp with time zone,
-  add column if not exists fecha_revocacion timestamp with time zone,
-  add column if not exists motivo_revocacion character varying;
--- Los vínculos previos se tratan como concedidos al crearse (sin autorizador conocido).
-update cuidared.vinculo set fecha_autorizacion = fecha_creacion where fecha_autorizacion is null;
-alter table cuidared.vinculo alter column fecha_autorizacion set default now();
-alter table cuidared.vinculo alter column fecha_autorizacion set not null;
-alter table cuidared.vinculo
-  add constraint ck_vinculo_motivo_revocacion check (motivo_revocacion is null or fecha_revocacion is not null),
-  add constraint ck_vinculo_revocacion_posterior check (fecha_revocacion is null or fecha_revocacion >= fecha_autorizacion);
-create index ix_vinculo_usuario_vigente on cuidared.vinculo (usuario_id, tipo_vinculo_id) where fecha_revocacion is null;
+-- El bloque 2a incorpora la identidad, autorización y revocación de vínculos para que 2c conserve el historial.
 
 /* ───────────── 3. Riesgo: evaluaciones, autoría de factores y un factor vigente por tipo ───────────── */
 
@@ -107,25 +93,6 @@ alter table cuidared.indicacion_medica
 create index ix_indicacion_medica_envejeciente on cuidared.indicacion_medica (envejeciente_id, estado);
 
 /* ───────────── 5. Alcance sobre el adulto: exige vínculo NO revocado ───────────── */
-
--- Reemplaza la función de fase 2a conservando firma y semántica (Administrador/Coordinador ven todos los adultos de su
--- cuenta; Cuidador y Voluntario los asignados; Familiar los autorizados) y agrega fecha_revocacion is null.
-create or replace function cuidared_interno.alcanza_envejeciente(p_cuenta_id bigint, p_envejeciente_id uuid, p_usuario_id uuid)
-returns boolean language sql stable set search_path = '' as $$
-  select exists (
-    select 1
-    from cuidared.envejeciente e
-    join cuidared_interno.membresia_activa(p_cuenta_id, p_usuario_id) m on true
-    where e.envejeciente_id = p_envejeciente_id and e.cuenta_id = p_cuenta_id
-      and (m.rol in ('administrador', 'coordinador')
-        or exists (
-          select 1 from cuidared.vinculo v join cuidared.tipo_vinculo tv on tv.tipo_vinculo_id = v.tipo_vinculo_id
-          where v.envejeciente_id = e.envejeciente_id and v.usuario_id = p_usuario_id
-            and v.fecha_revocacion is null
-            and tv.codigo::text = case m.rol when 'cuidador' then 'cuidador_asignado'
-                                             when 'voluntario' then 'voluntario_asignado'
-                                             when 'familiar' then 'familiar_responsable' end)))
-$$;
 
 /* ───────────── 6. Ayudas internas (esquema NO expuesto) ───────────── */
 
@@ -347,7 +314,7 @@ language sql stable set search_path = '' as $$
   from cuidared.vinculo v
   join cuidared.tipo_vinculo tv on tv.tipo_vinculo_id = v.tipo_vinculo_id
   join cuidared.usuario u on u.usuario_id = v.usuario_id
-  where v.envejeciente_id = p_envejeciente_id and v.usuario_id = p_usuario_id
+  where v.envejeciente_id = p_envejeciente_id and v.usuario_id = p_usuario_id and v.fecha_revocacion is null
 $$;
 
 -- Vigentes de un tipo de vínculo cuyo titular conserva su membresía activa con el rol esperado. Con p_detalle (gestores)
@@ -362,13 +329,13 @@ returns jsonb language sql stable set search_path = '' as $$
   join cuidared.tipo_vinculo tv on tv.tipo_vinculo_id = v.tipo_vinculo_id and tv.codigo::text = p_tipo
   join cuidared.usuario u on u.usuario_id = v.usuario_id
   where v.envejeciente_id = p_envejeciente_id and v.fecha_revocacion is null
+    and (p_rol <> 'familiar' or v.autorizado_por_usuario_id is not null)
     and exists (select 1 from cuidared_interno.membresia_activa(p_cuenta_id, v.usuario_id) m where m.rol = p_rol)
 $$;
 
 /*
- * Crea o renueva un vínculo (cuidador, voluntario o familiar). Un usuario tiene un solo vínculo por adulto (PK): reasignar
- * actualiza la fila, registra al nuevo autorizador y limpia la revocación. Si ya está vigente con el mismo tipo no cambia nada.
- * Serializa con las demás operaciones sobre el adulto y exige que esté activo.
+ * Crea un periodo de asignación o autorización. Si ya existe uno explícito vigente del mismo tipo se conserva.
+ * Usa el bloqueo de miembros de la cuenta antes del adulto para serializar con cambios de rol y otras asignaciones.
  */
 create function cuidared_interno.seg_vincular(p_cuenta_id bigint, p_envejeciente_id uuid, p_usuario_id uuid, p_tipo text, p_actor uuid)
 returns jsonb language plpgsql set search_path = '' as $$
@@ -376,29 +343,31 @@ declare
   v_rol text := case p_tipo when 'cuidador_asignado' then 'cuidador' when 'voluntario_asignado' then 'voluntario'
                             when 'familiar_responsable' then 'familiar' end;
   v_estado text;
-  v_m record;
+  v_rol_actual text;
   v_tipo_id smallint;
+  v_fecha timestamptz;
 begin
-  if v_rol is null then raise invalid_parameter_value; end if;
+  if v_rol is null or p_actor is null then raise invalid_parameter_value; end if;
+  perform cuidared_interno.bloquear_miembros(p_cuenta_id);
+  perform cuidared_interno.exigir_envejeciente(p_cuenta_id,
+    case when v_rol = 'familiar' then 'familiares:autorizar' else 'adultos:asignar' end, p_envejeciente_id);
+  select m.rol into v_rol_actual from cuidared_interno.membresia_activa(p_cuenta_id, p_usuario_id) m;
+  if not found or v_rol_actual <> v_rol then raise exception 'CR_ROL_NO_COMPATIBLE' using errcode = 'P0001'; end if;
   select e.estado::text into v_estado from cuidared.envejeciente e
    where e.envejeciente_id = p_envejeciente_id and e.cuenta_id = p_cuenta_id
    for no key update;
   if not found then raise insufficient_privilege; end if;
   if v_estado <> 'activo' then raise exception 'CR_ADULTO_INACTIVO' using errcode = 'P0001'; end if;
-  select * into v_m from cuidared_interno.membresia_activa(p_cuenta_id, p_usuario_id);
-  if not found or v_m.rol <> v_rol then raise exception 'CR_ROL_NO_COMPATIBLE' using errcode = 'P0001'; end if;
   select tv.tipo_vinculo_id into v_tipo_id from cuidared.tipo_vinculo tv where tv.codigo::text = p_tipo;
   if v_tipo_id is null then raise exception 'catalogo tipo_vinculo sin configurar' using errcode = '55000'; end if;
 
-  insert into cuidared.vinculo as v (envejeciente_id, usuario_id, tipo_vinculo_id, autorizado_por_usuario_id, fecha_autorizacion)
-  values (p_envejeciente_id, p_usuario_id, v_tipo_id, p_actor, clock_timestamp())
-  on conflict (envejeciente_id, usuario_id) do update set
-    tipo_vinculo_id = excluded.tipo_vinculo_id,
-    autorizado_por_usuario_id = excluded.autorizado_por_usuario_id,
-    fecha_autorizacion = excluded.fecha_autorizacion,
-    fecha_revocacion = null,
-    motivo_revocacion = null
-  where v.fecha_revocacion is not null or v.tipo_vinculo_id <> excluded.tipo_vinculo_id;
+  v_fecha := clock_timestamp();
+  update cuidared.vinculo v set fecha_revocacion = v_fecha, motivo_revocacion = 'Sustituido por nueva autorización'
+   where v.envejeciente_id = p_envejeciente_id and v.usuario_id = p_usuario_id and v.fecha_revocacion is null
+     and (v.tipo_vinculo_id <> v_tipo_id or v.autorizado_por_usuario_id is null);
+  insert into cuidared.vinculo (envejeciente_id, usuario_id, tipo_vinculo_id, autorizado_por_usuario_id, fecha_autorizacion)
+  values (p_envejeciente_id, p_usuario_id, v_tipo_id, p_actor, v_fecha)
+  on conflict (envejeciente_id, usuario_id) where fecha_revocacion is null do nothing;
   return cuidared_interno.seg_asignacion_json(p_envejeciente_id, p_usuario_id);
 end;
 $$;
@@ -470,7 +439,13 @@ language sql stable set search_path = '' as $$
          v.visita_id::text, 1::smallint
   from cuidared.detalle_visita d
   join cuidared.visita v on v.visita_id = d.visita_id
+  join cuidared.envejeciente adulto on adulto.envejeciente_id = d.envejeciente_id
   where p_visitas and d.envejeciente_id = p_envejeciente_id and v.estado::text in ('completada', 'cancelada')
+    -- Antes de 4a, comprobar todos los adultos. Después, excluir visitas que quedaron sin cuenta conciliada.
+    and case when to_jsonb(v) ? 'cuenta_id' then (to_jsonb(v)->>'cuenta_id')::bigint = adulto.cuenta_id
+        else not exists (select 1 from cuidared.detalle_visita otro
+          join cuidared.envejeciente e on e.envejeciente_id = otro.envejeciente_id
+          where otro.visita_id = v.visita_id and e.cuenta_id is distinct from adulto.cuenta_id) end
   union all
   select 'necesidad'::text, en.fecha_necesidad, format('Necesidad registrada: %s', n.nombre), en.descripcion,
          en.envejeciente_necesidad_id::text, 1::smallint

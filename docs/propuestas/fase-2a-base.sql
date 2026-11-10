@@ -9,7 +9,7 @@
 --   · Autorregistro del titular (confirmado por el usuario el 2026-11-06): api_sesion deja de exigir invited_at.
 --   · Prueba gratuita única de 7 días fijos (confirmado 2026-11-06), sin plan; se marca con cuenta.prueba_gratuita.
 --   · Matriz de permisos V2 (propuesta, D04) en cuidared.rol_permiso, generada desde src/modules/cuentas/permisos.js.
---   · Una membresía vigente (pendiente/activa) por usuario y cuenta; un perfil Cuidador vigente por usuario y cuenta.
+--   · Una membresía vigente por usuario y cuenta; un perfil global de Cuidador por usuario.
 begin;
 
 /* ───────────── 1. Catálogos de cuenta con código estable ───────────── */
@@ -48,7 +48,7 @@ insert into cuidared.rol (codigo, nombre, descripcion) values
   ('voluntario', 'Voluntario', 'Solo Organización: registra la visita y su observación.')
 on conflict (codigo) do nothing;
 
--- D14 (catálogo TipoCuidado pendiente de aprobación): propuesta mínima.
+-- D14: tres tipos de cuidado aprobados para el MVP.
 insert into cuidared.tipo_cuidado (nombre) values ('Cuidador remunerado'), ('Familiar cuidador'), ('Voluntario comunitario')
 on conflict (nombre) do nothing;
 
@@ -100,22 +100,25 @@ alter table cuidared.cuenta alter column suscripcion_estado set default 'prueba'
 alter table cuidared.cuenta add column fecha_fin_vigencia date;
 alter table cuidared.cuenta add constraint ck_cuenta_plan_activa
   check (suscripcion_estado::text <> 'activa' or plan_id is not null);
--- Los datos históricos por fecha no contienen la hora real. Requieren una decisión antes de convertirlos.
-do $$
-begin
-  if exists (select 1 from cuidared.cuenta where fecha_inicio_prueba is not null or fecha_fin_prueba is not null) then
-    raise exception 'Hay pruebas históricas por fecha; se requiere conciliación antes de aplicar';
-  end if;
-end $$;
+-- Conservar las fechas de calendario originales. Solo los instantes verificables pueden dar acceso por prueba.
+-- La regla previa del proyecto exigiría fechas de calendario a las nuevas pruebas con prueba_gratuita = true.
+alter table cuidared.cuenta drop constraint if exists ck_cuenta_prueba;
+alter table cuidared.cuenta rename column fecha_inicio_prueba to fecha_inicio_prueba_historica;
+alter table cuidared.cuenta rename column fecha_fin_prueba to fecha_fin_prueba_historica;
 alter table cuidared.cuenta
-  alter column fecha_inicio_prueba type timestamptz using null::timestamptz,
-  alter column fecha_fin_prueba type timestamptz using null::timestamptz;
+  add column fecha_inicio_prueba timestamptz,
+  add column fecha_fin_prueba timestamptz,
+  add column prueba_historica boolean not null default false;
+update cuidared.cuenta set prueba_historica = true
+ where fecha_inicio_prueba_historica is not null or fecha_fin_prueba_historica is not null
+    or prueba_gratuita or suscripcion_estado = 'prueba';
 
 -- Ventana automática de 168 horas transcurridas, independiente de la zona horaria.
 alter table cuidared.cuenta add constraint ck_cuenta_prueba_7_dias
-  check ((fecha_inicio_prueba is null and fecha_fin_prueba is null and not prueba_gratuita and suscripcion_estado <> 'prueba')
+  check (case when prueba_historica then fecha_inicio_prueba is null and fecha_fin_prueba is null
+    else (fecha_inicio_prueba is null and fecha_fin_prueba is null and not prueba_gratuita and suscripcion_estado <> 'prueba')
       or (prueba_gratuita and fecha_inicio_prueba is not null and fecha_fin_prueba is not null
-          and fecha_fin_prueba - fecha_inicio_prueba = interval '168 hours'));
+          and fecha_fin_prueba - fecha_inicio_prueba = interval '168 hours') end);
 
 -- La base real ya usa esta función en el trigger de cuenta. Conservar la validación de plan cuando exista.
 create or replace function cuidared.fn_trg_cuenta_valida_plan() returns trigger
@@ -135,14 +138,24 @@ on cuidared.cuenta for each row execute function cuidared.fn_trg_cuenta_valida_p
 create function cuidared.fn_prueba_inmutable() returns trigger
 language plpgsql set search_path = '' as $$
 begin
+  if tg_op = 'INSERT' then
+    if new.prueba_historica or new.fecha_inicio_prueba_historica is not null or new.fecha_fin_prueba_historica is not null then
+      raise check_violation;
+    end if;
+    return new;
+  end if;
   if new.fecha_inicio_prueba is distinct from old.fecha_inicio_prueba
      or new.fecha_fin_prueba is distinct from old.fecha_fin_prueba
+     or new.fecha_inicio_prueba_historica is distinct from old.fecha_inicio_prueba_historica
+     or new.fecha_fin_prueba_historica is distinct from old.fecha_fin_prueba_historica
+     or new.prueba_historica is distinct from old.prueba_historica
      or new.prueba_gratuita is distinct from old.prueba_gratuita then
     raise check_violation;
   end if;
   return new;
 end $$;
-create trigger trg_cuenta_prueba_inmutable before update of fecha_inicio_prueba, fecha_fin_prueba, prueba_gratuita
+create trigger trg_cuenta_prueba_inmutable before insert or update of fecha_inicio_prueba, fecha_fin_prueba,
+  fecha_inicio_prueba_historica, fecha_fin_prueba_historica, prueba_historica, prueba_gratuita
 on cuidared.cuenta for each row execute function cuidared.fn_prueba_inmutable();
 revoke all on function cuidared.fn_prueba_inmutable() from public, anon, authenticated;
 
@@ -154,6 +167,25 @@ create unique index uq_membresia_vigente on cuidared.membresia (usuario_id, cuen
 
 -- Un perfil global por identidad, con alcance derivado de la membresía de cada cuenta.
 create unique index uq_cuidador_usuario on cuidared.cuidador (usuario_id);
+
+-- Una fila por periodo de asignación. Las revocaciones de fase 2c ya pueden conservar la fila original.
+alter table cuidared.vinculo
+  add column vinculo_id bigint generated always as identity,
+  add column autorizado_por_usuario_id uuid references cuidared.usuario(usuario_id),
+  add column fecha_autorizacion timestamptz,
+  add column fecha_revocacion timestamptz,
+  add column motivo_revocacion character varying,
+  drop constraint if exists pk_vinculo,
+  drop constraint if exists vinculo_pkey,
+  add constraint vinculo_pkey primary key (vinculo_id),
+  add constraint ck_vinculo_autorizacion check ((autorizado_por_usuario_id is null) = (fecha_autorizacion is null)),
+  add constraint ck_vinculo_motivo_revocacion check (motivo_revocacion is null or fecha_revocacion is not null),
+  add constraint ck_vinculo_revocacion_posterior
+    check (fecha_revocacion is null or fecha_revocacion >= coalesce(fecha_autorizacion, fecha_creacion));
+create unique index uq_vinculo_vigente on cuidared.vinculo (envejeciente_id, usuario_id) where fecha_revocacion is null;
+create index ix_vinculo_usuario_vigente on cuidared.vinculo (usuario_id, tipo_vinculo_id) where fecha_revocacion is null;
+alter table cuidared.vinculo enable row level security;
+revoke all on cuidared.vinculo from public, anon, authenticated;
 
 /* ───────────── 5. Parámetros (RF-19) ───────────── */
 -- Regla propuesta (D14): configuracion_cuenta.valor > parametro.valor (valor global efectivo); valor_defecto es la
@@ -469,8 +501,8 @@ $$;
 /*
  * Alcance sobre un adulto mayor (V2 §Vínculo): Administrador y Coordinador ven todos los de su cuenta; Cuidador y
  * Voluntario solo los asignados con su tipo de vínculo; Familiar solo los autorizados explícitamente. El adulto
- * debe pertenecer a la cuenta. La fase 3 reemplaza esta función para exigir además una autorización familiar
- * vigente (no revocada).
+ * debe pertenecer a la cuenta y el vínculo debe seguir vigente. Un vínculo familiar previo sin autorización
+ * registrada conserva su historia, pero no concede acceso.
  */
 create function cuidared_interno.alcanza_envejeciente(p_cuenta_id bigint, p_envejeciente_id uuid, p_usuario_id uuid)
 returns boolean language sql stable set search_path = '' as $$
@@ -483,6 +515,8 @@ returns boolean language sql stable set search_path = '' as $$
         or exists (
           select 1 from cuidared.vinculo v join cuidared.tipo_vinculo tv on tv.tipo_vinculo_id = v.tipo_vinculo_id
           where v.envejeciente_id = e.envejeciente_id and v.usuario_id = p_usuario_id
+            and v.fecha_revocacion is null
+            and (m.rol <> 'familiar' or v.autorizado_por_usuario_id is not null)
             and tv.codigo::text = case m.rol when 'cuidador' then 'cuidador_asignado'
                                              when 'voluntario' then 'voluntario_asignado'
                                              when 'familiar' then 'familiar_responsable' end)))

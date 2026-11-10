@@ -2,7 +2,7 @@
 -- Fase 4 · Visitas y Seguimiento (ID04), bloque 4b — agenda de cuidado, ejecución y evidencias privadas.
 -- RF-16, RF-10 (agenda), RS-013 (archivos), RS-005/016 (trazabilidad) · Reglas de Negocio V2 · D12 (D13 en archivos).
 -- Basada en docs/DB.sql y docs/propuestas/fase-2a-base.sql (cuidared_interno.exigir/alcanza_envejeciente/hoy,
--- cuidador.cuenta_id). Validada en un PostgreSQL local con `node scripts/validar-propuestas-local.js --solo=4b`
+-- perfil global de cuidador). Validada en un PostgreSQL local con `node scripts/validar-propuestas-local.js --solo=4b`
 -- (Auth y Storage simulados: no certifica RLS de Supabase ni el comportamiento real del servicio Storage).
 -- © 2026 Equipo CuidaRed – INTEC.
 --
@@ -14,16 +14,14 @@
 --     una evidencia de una tarea en progreso la devuelve a pendiente. Cerrada o cancelada la tarea no admite evidencias.
 --   · Propuesta técnica (D13, archivos): JPG, PNG, WEBP o PDF de hasta 5 MB (RS-013), máximo 5 evidencias no rechazadas
 --     por tarea, bucket privado `evidencias`, URL firmada de descarga de 5 minutos. Retención y borrado: sin definir.
---   · «Alcance» del adulto con cuidared_interno.alcanza_envejeciente (la fase 3 lo reemplaza y agrega la revocación).
+--   · «Alcance» del adulto con cuidared_interno.alcanza_envejeciente, incluida la revocación.
 begin;
 
-/* Precondición: las columnas NOT NULL nuevas de evidencia suponen una tabla vacía (ningún módulo la ha poblado). */
-do $$
-begin
-  if exists (select 1 from cuidared.evidencia) or exists (select 1 from cuidared.tarea_agenda) then
-    raise exception 'fase-4b: cuidared.tarea_agenda/evidencia ya contienen filas; revisar antes de aplicar esta propuesta';
-  end if;
-end $$;
+-- Marcar las filas previas sin inferir autoría, cierre ni metadatos. El valor por defecto operativo será false.
+alter table cuidared.tarea_agenda add column es_historica boolean not null default true;
+alter table cuidared.tarea_agenda alter column es_historica set default false;
+alter table cuidared.evidencia add column es_historica boolean not null default true;
+alter table cuidared.evidencia alter column es_historica set default false;
 
 /* ───────────── 1. Tarea de agenda: series, cancelación y cierre ───────────── */
 
@@ -36,46 +34,62 @@ alter table cuidared.tarea_agenda
   add column actualizado_por uuid references cuidared.usuario(usuario_id);
 
 alter table cuidared.tarea_agenda
-  add constraint ck_tarea_titulo check (char_length(btrim(titulo::text)) between 3 and 80),
+  add constraint ck_tarea_titulo check (es_historica or char_length(btrim(titulo::text)) between 3 and 80),
   add constraint ck_tarea_serie check (serie_id is null or es_repetitiva),
   add constraint ck_tarea_motivo_cancelacion check (motivo_cancelacion is null or char_length(motivo_cancelacion) between 1 and 500),
-  add constraint ck_tarea_completada check (estado::text <> 'completada' or (completada_por is not null and fecha_completada is not null));
+  add constraint ck_tarea_completada check (es_historica or estado::text <> 'completada'
+    or (completada_por is not null and fecha_completada is not null));
 
 create index ix_tarea_envejeciente_fecha on cuidared.tarea_agenda (envejeciente_id, fecha_programada);
-create index ix_tarea_cuidador_fecha on cuidared.tarea_agenda (cuidador_id, fecha_programada);
+create index if not exists ix_tarea_cuidador_fecha on cuidared.tarea_agenda (cuidador_id, fecha_programada);
 create index ix_tarea_serie on cuidared.tarea_agenda (serie_id) where serie_id is not null;
 
 /* ───────────── 2. Evidencia: archivo privado, autoría y validación ───────────── */
 
 alter table cuidared.evidencia
-  add column registrada_por uuid not null references cuidared.usuario(usuario_id),
-  add column nombre_archivo character varying not null,
-  add column tipo_mime character varying not null,
-  add column tamano_bytes integer not null,
+  add column registrada_por uuid references cuidared.usuario(usuario_id),
+  add column nombre_archivo character varying,
+  add column tipo_mime character varying,
+  add column tamano_bytes integer,
   add column validada_por uuid references cuidared.usuario(usuario_id),
   add column fecha_validacion timestamp with time zone,
   add column motivo_rechazo text;
 
 alter table cuidared.evidencia
+  add constraint ck_evidencia_metadatos check (es_historica or (registrada_por is not null
+    and nombre_archivo is not null and tipo_mime is not null and tamano_bytes is not null)),
   add constraint ck_evidencia_tipo_mime check (tipo_mime::text in ('image/jpeg', 'image/png', 'image/webp', 'application/pdf')),
   add constraint ck_evidencia_tamano check (tamano_bytes between 1 and 5242880),            -- RS-013: 5 MB
   add constraint ck_evidencia_nombre check (char_length(btrim(nombre_archivo::text)) between 1 and 150
                                             and nombre_archivo::text !~ '[/\\]'),
-  add constraint ck_evidencia_observacion check (observacion is null or char_length(observacion) <= 300),
+  add constraint ck_evidencia_observacion check (es_historica or observacion is null or char_length(observacion) <= 300),
   -- archivo_url guarda la RUTA en el bucket privado: cuenta/<cuenta_id>/tarea/<tarea_id>/<uuid>.<ext>
-  add constraint ck_evidencia_ruta check (archivo_url ~ ('^cuenta/[1-9][0-9]{0,17}/tarea/' || tarea_agenda_id::text
+  add constraint ck_evidencia_ruta check (es_historica or archivo_url ~ ('^cuenta/[1-9][0-9]{0,17}/tarea/' || tarea_agenda_id::text
     || '/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(jpg|png|webp|pdf)$')),
   add constraint ck_evidencia_ruta_tipo check (
     (tipo_mime::text = 'image/jpeg' and archivo_url ~ '\.jpg$') or (tipo_mime::text = 'image/png' and archivo_url ~ '\.png$')
     or (tipo_mime::text = 'image/webp' and archivo_url ~ '\.webp$') or (tipo_mime::text = 'application/pdf' and archivo_url ~ '\.pdf$')),
   add constraint ck_evidencia_revision check (
-    (estado_validacion::text = 'pendiente' and validada_por is null and fecha_validacion is null and motivo_rechazo is null)
+    es_historica or (estado_validacion::text = 'pendiente' and validada_por is null and fecha_validacion is null and motivo_rechazo is null)
     or (estado_validacion::text = 'validada' and validada_por is not null and fecha_validacion is not null and motivo_rechazo is null)
     or (estado_validacion::text = 'rechazada' and validada_por is not null and fecha_validacion is not null
-        and char_length(btrim(motivo_rechazo)) between 5 and 200)),
-  add constraint uq_evidencia_archivo unique (archivo_url);
+        and motivo_rechazo is not null and char_length(btrim(motivo_rechazo)) between 5 and 200));
 
-create index ix_evidencia_tarea on cuidared.evidencia (tarea_agenda_id, estado_validacion);
+create unique index uq_evidencia_archivo on cuidared.evidencia (archivo_url) where not es_historica;
+create index ix_evidencia_tarea_estado on cuidared.evidencia (tarea_agenda_id, estado_validacion);
+
+create function cuidared_interno.trg_agenda_historica_solo_lectura() returns trigger
+language plpgsql set search_path = '' as $$
+begin
+  if tg_op <> 'INSERT' and old.es_historica then raise check_violation; end if;
+  if tg_op = 'DELETE' then return old; end if;
+  if new.es_historica then raise check_violation; end if;
+  return new;
+end $$;
+create trigger trg_tarea_historica_solo_lectura before insert or update or delete on cuidared.tarea_agenda
+  for each row execute function cuidared_interno.trg_agenda_historica_solo_lectura();
+create trigger trg_evidencia_historica_solo_lectura before insert or update or delete on cuidared.evidencia
+  for each row execute function cuidared_interno.trg_agenda_historica_solo_lectura();
 
 -- Sin acceso directo: solo a través de las RPC de cuidared_api (CR-160).
 alter table cuidared.tarea_agenda enable row level security;
@@ -210,6 +224,7 @@ begin
   where t.tarea_agenda_id = p_tarea_id and e.cuenta_id = p_cuenta_id
   for update of t;
   if not found then raise no_data_found; end if;
+  if v_t.es_historica then raise exception 'CR_ESTADO_INVALIDO' using errcode = 'P0001'; end if;
   return v_t;
 end $$;
 
@@ -243,6 +258,7 @@ language sql stable set search_path = '' as $$
     'fecha_programada', t.fecha_programada,
     'hora_programada', to_char(t.hora_programada, 'HH24:MI'),
     'estado', t.estado,
+    'es_historica', t.es_historica,
     'requiere_evidencia', t.requiere_evidencia,
     'es_repetitiva', t.es_repetitiva,
     'serie_id', t.serie_id,
@@ -268,6 +284,7 @@ language sql stable set search_path = '' as $$
   join cuidared.usuario u on u.usuario_id = c.usuario_id
   join cuidared.prioridad p on p.prioridad_id = t.prioridad_id
   left join cuidared.indicacion_medica i on i.indicacion_medica_id = t.indicacion_medica_id
+    and i.envejeciente_id = t.envejeciente_id
   where t.tarea_agenda_id = p_tarea_id
 $$;
 
@@ -282,6 +299,7 @@ language sql stable set search_path = '' as $$
     'tamano_bytes', v.tamano_bytes,
     'observacion', v.observacion,
     'estado_validacion', v.estado_validacion,
+    'es_historica', v.es_historica,
     'motivo_rechazo', v.motivo_rechazo,
     'registrada_por', v.registrada_por,
     'registrada_por_nombre', btrim(r.nombres::text || ' ' || r.apellidos::text),
@@ -289,9 +307,9 @@ language sql stable set search_path = '' as $$
     'validada_por', v.validada_por,
     'validada_por_nombre', btrim(a.nombres::text || ' ' || a.apellidos::text),
     'fecha_validacion', v.fecha_validacion)
-    || case when p_con_ruta then jsonb_build_object('ruta', v.archivo_url) else '{}'::jsonb end
+    || case when p_con_ruta and not v.es_historica then jsonb_build_object('ruta', v.archivo_url) else '{}'::jsonb end
   from cuidared.evidencia v
-  join cuidared.usuario r on r.usuario_id = v.registrada_por
+  left join cuidared.usuario r on r.usuario_id = v.registrada_por
   left join cuidared.usuario a on a.usuario_id = v.validada_por
   where v.evidencia_id = p_evidencia_id
 $$;
@@ -795,6 +813,9 @@ begin
                       p_cuenta_id, p_tarea_id, v_a.o_ext) then
     raise exception 'CR_ARCHIVO_INVALIDO' using errcode = 'P0001';
   end if;
+  if exists (select 1 from cuidared.evidencia v where v.es_historica and v.archivo_url = v_ruta) then
+    raise exception 'CR_ARCHIVO_INVALIDO' using errcode = 'P0001';
+  end if;
   select o.metadata into v_meta from storage.objects o where o.bucket_id = 'evidencias' and o.name = v_ruta;
   if not found then raise exception 'CR_ARCHIVO_NO_SUBIDO' using errcode = 'P0001'; end if;
   if v_meta ? 'size' and (v_meta->>'size')::bigint is distinct from v_a.o_tamano then
@@ -848,7 +869,7 @@ begin
   v_t := cuidared_interno.tarea_cargar(p_cuenta_id, v_tarea_id);   -- orden de bloqueo: tarea y luego evidencia
   if not cuidared_interno.alcanza_envejeciente(p_cuenta_id, v_t.envejeciente_id, v_uid) then raise insufficient_privilege; end if;
   select * into v_ev from cuidared.evidencia where evidencia_id = p_evidencia_id for update;
-  if v_ev.estado_validacion::text <> 'pendiente' or v_t.estado::text = 'cancelada' then
+  if v_ev.es_historica or v_ev.estado_validacion::text <> 'pendiente' or v_t.estado::text = 'cancelada' then
     raise exception 'CR_ESTADO_INVALIDO' using errcode = 'P0001';
   end if;
 
@@ -938,7 +959,7 @@ begin
   if not cuidared_interno.acceso_operativo(v_cuenta) then return false; end if;
   select t.estado, t.envejeciente_id into v_t from cuidared.tarea_agenda t
   join cuidared.envejeciente e on e.envejeciente_id = t.envejeciente_id
-  where t.tarea_agenda_id = v_tarea and e.cuenta_id = v_cuenta;
+  where t.tarea_agenda_id = v_tarea and e.cuenta_id = v_cuenta and not t.es_historica;
   if not found then return false; end if;
   if p_modo = 'subir' then
     return v_t.estado::text in ('pendiente', 'en_progreso')
@@ -946,7 +967,9 @@ begin
       and cuidared_interno.tarea_es_del_cuidador(v_cuenta, v_tarea, v_uid)
       and cuidared_interno.alcanza_envejeciente(v_cuenta, v_t.envejeciente_id, v_uid);
   end if;
-  return cuidared_interno.tarea_puede_ver(v_cuenta, v_tarea, v_uid);
+  return cuidared_interno.tarea_puede_ver(v_cuenta, v_tarea, v_uid)
+    and exists (select 1 from cuidared.evidencia v
+      where v.tarea_agenda_id = v_tarea and v.archivo_url = p_nombre and not v.es_historica);
 end;
 $$;
 

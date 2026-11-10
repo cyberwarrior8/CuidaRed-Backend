@@ -65,7 +65,8 @@ end $$;
 create function pruebas.cuenta(p_tipo text, p_titular uuid, p_estado text default 'prueba', p_plan text default null,
                                p_fin_prueba date default null)
 returns bigint language plpgsql security definer set search_path = '' as $$
-declare v_id bigint; v_tipo smallint; v_cat smallint; v_hoy date := cuidared_interno.hoy();
+declare v_id bigint; v_tipo smallint; v_cat smallint;
+  v_fin timestamptz := coalesce(p_fin_prueba::timestamp at time zone 'America/Santo_Domingo', now() + interval '168 hours');
 begin
   select tipo_cuenta_id into v_tipo from cuidared.tipo_cuenta where codigo = p_tipo;
   select categoria_cuenta_id into v_cat from cuidared.categoria_cuenta where tipo_cuenta_id = v_tipo order by 1 limit 1;
@@ -74,8 +75,8 @@ begin
   insert into cuidared.cuenta(nombre, tipo_cuenta_id, categoria_cuenta_id, municipio_cod, suscripcion_estado, prueba_gratuita,
                               fecha_inicio_prueba, fecha_fin_prueba, plan_id, usuario_titular_id)
   values ('Cuenta ' || p_tipo, v_tipo, v_cat, '0101', p_estado, p_estado = 'prueba',
-          case when p_estado = 'prueba' then coalesce(p_fin_prueba, v_hoy + 7) - 7 end,
-          case when p_estado = 'prueba' then coalesce(p_fin_prueba, v_hoy + 7) end,
+          case when p_estado = 'prueba' then v_fin - interval '168 hours' end,
+          case when p_estado = 'prueba' then v_fin end,
           (select plan_id from cuidared.plan where nombre = p_plan), p_titular)
   returning cuenta_id into v_id;
   perform pruebas.miembro(v_id, p_titular, case p_tipo when 'familia' then 'coordinador' else 'administrador' end);
@@ -84,8 +85,8 @@ end $$;
 
 create function pruebas.miembro(p_cuenta bigint, p_usuario uuid, p_rol text, p_estado text default 'activa')
 returns bigint language sql security definer set search_path = '' as $$
-  insert into cuidared.membresia(usuario_id, cuenta_id, rol_id, estado)
-  select p_usuario, p_cuenta, r.rol_id, p_estado from cuidared.rol r where r.codigo = p_rol
+  insert into cuidared.membresia(usuario_id, cuenta_id, rol_id, estado, fecha_inicio)
+  select p_usuario, p_cuenta, r.rol_id, p_estado, cuidared_interno.hoy() from cuidared.rol r where r.codigo = p_rol
   returning membresia_id
 $$;
 

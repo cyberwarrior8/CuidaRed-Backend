@@ -108,7 +108,7 @@ Campos opcionales (al menos uno además de `alcance`): `titulo`, `cuidador_id`, 
 
 ### `GET /tareas/:tareaId/evidencias`
 
-Devuelve el arreglo `data` (sub-colección acotada por tarea, sin paginar). Cada evidencia incluye `url_descarga` (URL firmada de **5 minutos**) y `url_expira_en`; la ruta interna del bucket no se devuelve. Si el objeto ya no existe, `url_descarga` es `null`. Solo lo consulta quien ve la tarea (el Cuidador, solo la suya).
+Devuelve el arreglo `data` de la tarea sin paginar. Solo puede consultarlo quien tiene acceso a la tarea. Las evidencias operativas incluyen una URL de descarga de cinco minutos y su vencimiento. En las evidencias históricas (`es_historica: true`) y en los objetos faltantes ambos valores son `null`. Las tareas y evidencias históricas admiten consulta y conservan sus estados originales.
 
 ### Validar y rechazar
 

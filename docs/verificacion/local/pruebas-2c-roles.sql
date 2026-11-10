@@ -50,9 +50,9 @@ select e.envejeciente_id, :'cuid',
        (select tipo_vinculo_id from cuidared.tipo_vinculo where codigo = case when e.nombres = 'Abuelo' then 'referente' else 'cuidador_asignado' end)
 from cuidared.envejeciente e where e.cuenta_id in (:cta_a, :cta_b);
 select pruebas.afirmar((select count(*) from cuidared.vinculo where usuario_id = :'cuid') = 3, 'vínculos preparados');
--- Perfil Cuidador de la persona en ambas cuentas.
-insert into cuidared.cuidador (usuario_id, cuenta_id, tipo_cuidado_id, cuidador_independiente, usuario_empleador_id)
-select :'cuid', c, (select tipo_cuidado_id from cuidared.tipo_cuidado order by 1 limit 1), false, :'adm1' from unnest(array[:cta_a::bigint, :cta_b::bigint]) as c;
+-- Un perfil global de Cuidador para ambas cuentas.
+insert into cuidared.cuidador (usuario_id, tipo_cuidado_id, cuidador_independiente, usuario_empleador_id)
+select :'cuid', (select tipo_cuidado_id from cuidared.tipo_cuidado order by 1 limit 1), false, :'adm1';
 set local role authenticated;
 
 /* ───── Cambiar rol ───── */
@@ -90,14 +90,14 @@ select cuidared_api.api_cambiar_rol_miembro(:cta_a, :m_adm2b, 'administrador')->
 select pruebas.afirmar(pruebas.escalar_2c(format('select count(*) from cuidared.membresia where cuenta_id = %s and usuario_id = %L', :cta_a, :'adm2')) = '3', 'tres filas de historial');
 
 -- Cuidador → Voluntario: se revocan los vínculos de cuidador de los adultos DE ESA CUENTA; se conservan el
--- «referente» y los de la otra cuenta. El perfil Cuidador de esa cuenta se finaliza.
+-- «referente» y los de la otra cuenta. El perfil global se conserva.
 select cuidared_api.api_cambiar_rol_miembro(:cta_a, :m_cuid, 'voluntario') as cuid_nuevo \gset
 select pruebas.afirmar((:'cuid_nuevo'::jsonb)->>'rol' = 'voluntario', 'ahora voluntario');
 select pruebas.afirmar((:'cuid_nuevo'::jsonb)->'cuidador' = 'null'::jsonb, 'sin perfil cuidador vigente en esa cuenta');
-select pruebas.afirmar(pruebas.escalar_2c(format('select count(*) from cuidared.vinculo v join cuidared.envejeciente e using (envejeciente_id) where v.usuario_id = %L and e.cuenta_id = %s', :'cuid', :cta_a)) = '1', 'solo queda el referente en la cuenta A');
+select pruebas.afirmar(pruebas.escalar_2c(format('select count(*) from cuidared.vinculo v join cuidared.envejeciente e using (envejeciente_id) where v.usuario_id = %L and e.cuenta_id = %s and v.fecha_revocacion is null', :'cuid', :cta_a)) = '1', 'solo el referente queda vigente en A');
+select pruebas.afirmar(pruebas.escalar_2c(format('select count(*) from cuidared.vinculo v join cuidared.envejeciente e using (envejeciente_id) where v.usuario_id = %L and e.cuenta_id = %s and v.motivo_revocacion = %L', :'cuid', :cta_a, 'Cambio de rol')) = '1', 'se conserva la revocación en A');
 select pruebas.afirmar(pruebas.escalar_2c(format('select count(*) from cuidared.vinculo v join cuidared.envejeciente e using (envejeciente_id) where v.usuario_id = %L and e.cuenta_id = %s', :'cuid', :cta_b)) = '1', 'la cuenta B no se toca');
-select pruebas.afirmar(pruebas.escalar_2c(format('select count(*) from cuidared.cuidador where usuario_id = %L and cuenta_id = %s and fecha_fin is null', :'cuid', :cta_b)) = '1', 'perfil vigente en B');
-select pruebas.afirmar(pruebas.escalar_2c(format('select fecha_fin::text from cuidared.cuidador where usuario_id = %L and cuenta_id = %s', :'cuid', :cta_a)) = :'hoy', 'perfil finalizado en A');
+select pruebas.afirmar(pruebas.escalar_2c(format('select count(*) from cuidared.cuidador where usuario_id = %L and fecha_fin is null', :'cuid')) = '1', 'se conserva el perfil global vigente');
 select pruebas.como(:'cuid');
 select pruebas.afirmar(cuidared_api.api_contexto_cuenta(:cta_a)->>'rol' = 'voluntario', 'el acceso usa el rol nuevo');
 select pruebas.afirmar(cuidared_api.api_contexto_cuenta(:cta_b)->>'rol' = 'cuidador', 'y sigue siendo cuidador en B');
