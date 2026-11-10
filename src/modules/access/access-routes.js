@@ -1,7 +1,6 @@
 /* API de sesión y perfil propio · ID01, RF-09/RF-21. © 2026 Equipo CuidaRed – INTEC. */
 import { Router } from 'express';
 import { AppError } from '../../lib/errors.js';
-import { requireSession } from './require-session.js';
 import { updateProfileSchema, publicProfile } from './profile-schema.js';
 
 function parse(schema, body) {
@@ -10,9 +9,9 @@ function parse(schema, body) {
   return result.data;
 }
 
-export function createAccessRouter({ gateway, audit }) {
+export function createAccessRouter({ audit }) {
   const router = Router();
-  router.use(requireSession(gateway));
+  // requireSession se aplica en app.js para todo /api/v1 (una sola validación por petición).
   const log = (res, action) =>
     audit({
       requestId: res.locals.requestId,
@@ -21,7 +20,7 @@ export function createAccessRouter({ gateway, audit }) {
       result: 'success',
     });
 
-  router.get('/me', (_req, res) => {
+  router.get('/me', async (_req, res) => {
     const { identity, profile } = res.locals.access;
     res.json({ data: { identity, profile: publicProfile(profile) } });
   });

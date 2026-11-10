@@ -1,6 +1,6 @@
 # CuidaRed-Backend
 
-API de CuidaRed en **JavaScript / Node.js / Express**. Fase 1 en implementación; las fases 2–8 están pendientes. Consultar [plan](PLAN-DESARROLLO-BACKEND.md), [contexto](CONTEXTO-BACKEND.md), [guía](AGENTS.md) y [cambios](CAMBIOS-ACTUALES.md).
+API de CuidaRed en **JavaScript / Node.js / Express**. La fase 1 sigue disponible y la rama local integra las fases 2 a 4 con el frontend del equipo. La persistencia nueva sigue pendiente de aprobación y aplicación en Supabase. Consultar [integración](docs/INTEGRACION-FASES-2-A-4.md), [plan](PLAN-DESARROLLO-BACKEND.md) y [cambios](CAMBIOS-ACTUALES.md).
 
 Contrato compartido con el frontend: [convenciones de API — CR-162](docs/CONVENCIONES-API.md), incluyendo errores, paginación, orden y filtros.
 
@@ -17,7 +17,7 @@ npm run dev
 
 `npm start` inicia sin vigilancia de archivos. JavaScript ESM se ejecuta directamente: no hay paso de compilación TypeScript. `GET /health/live` confirma que Express responde. Un servidor iniciado no demuestra que los servicios de persistencia estén configurados.
 
-Usar solo `SUPABASE_PUBLISHABLE_KEY=sb_publishable_...`; nunca una clave secret/service_role. Producción exige HTTPS y orígenes explícitos. `.env` está ignorado. No activar confianza en proxies sin definir primero la topología de despliegue.
+Configurar `SUPABASE_PUBLISHABLE_KEY` con la clave publicable. `SUPABASE_SECRET_KEY` es opcional y se usa en el servidor para invitar miembros con identidad nueva. Producción exige HTTPS y orígenes explícitos. `.env` está ignorado.
 
 ## Comprobaciones
 
@@ -25,6 +25,7 @@ Usar solo `SUPABASE_PUBLISHABLE_KEY=sb_publishable_...`; nunca una clave secret/
 npm run lint
 npm run format:check
 npm test
+npm run validar:sql   # propuestas SQL en un PostgreSQL local desechable (PGHOST local)
 ```
 
 `npm run format` aplica Prettier; `npm run test:watch` observa pruebas. Vitest/Supertest usan datos sintéticos y dependencias interceptadas: no requieren ni modifican una base real. Las pruebas HTTP abren puertos locales temporales.
@@ -34,6 +35,7 @@ npm test
 - `src/app.js`, `src/server.js`: aplicación y arranque.
 - `src/config/`, `src/lib/`: entorno, errores y auditoría técnica.
 - `src/modules/access/`: sesión, perfil, validación y adaptador Supabase.
+- `src/modules/{cuentas,catalogos,miembros,envejecientes,seguimiento,visitas,publico,agenda,sync}/`: fases 2–4, una carpeta por funcionalidad.
 - `tests/`: pruebas `*.test.js`.
 - `docs/`: contratos y propuestas de cambios; no se ejecutan automáticamente.
 

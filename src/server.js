@@ -3,11 +3,17 @@ import 'dotenv/config';
 import { createApp } from './app.js';
 import { readEnv } from './config/env.js';
 import { createAuditSink } from './lib/audit.js';
+import { createAdminGateway } from './lib/supabase-admin.js';
 import { createSupabaseGateway } from './modules/access/supabase-gateway.js';
 
 const env = readEnv(process.env);
 const audit = createAuditSink();
-const app = createApp({ env, gateway: createSupabaseGateway(env), audit });
+const app = createApp({
+  env,
+  gateway: createSupabaseGateway(env),
+  adminGateway: createAdminGateway(env),
+  audit,
+});
 const server = app.listen(env.PORT, () => {
   audit({ action: 'server.started', result: 'success' });
 });
