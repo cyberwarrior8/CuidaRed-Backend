@@ -16,6 +16,13 @@ export function requireSession(gateway) {
     if (!session.vigente && session.motivo === 'usuario_inactivo') {
       throw new AppError(403, 'USER_INACTIVE', 'Tu usuario no está activo.');
     }
+    if (!session.vigente && session.motivo === 'cuenta_deshabilitada') {
+      throw new AppError(
+        403,
+        'ACCOUNT_DISABLED',
+        'La cuenta está deshabilitada. Contacta a soporte. Los registros pendientes no se sincronizaron.',
+      );
+    }
     if (!session.vigente) throw new AppError(401, 'INVALID_SESSION', 'Inicia sesión de nuevo.');
     const profile = await repository.getProfile();
     if (!profile)

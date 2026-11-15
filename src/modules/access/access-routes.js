@@ -9,7 +9,7 @@ function parse(schema, body) {
   return result.data;
 }
 
-export function createAccessRouter({ audit }) {
+export function createAccessRouter({ audit, auditAccess }) {
   const router = Router();
   // requireSession se aplica en app.js para todo /api/v1 (una sola validación por petición).
   const log = (res, action) =>
@@ -39,6 +39,7 @@ export function createAccessRouter({ audit }) {
   router.post('/session/logout', async (_req, res) => {
     await res.locals.access.repository.session('cerrar');
     log(res, 'session.closed');
+    await auditAccess({ actorId: res.locals.actorId, action: 'session.closed', req: _req });
     res.status(204).end();
   });
   return router;

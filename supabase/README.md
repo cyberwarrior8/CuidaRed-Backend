@@ -8,4 +8,6 @@ La base `cuidared` ya existía y todavía no tiene una migración inicial reprod
 
 La migración configura `pgrst.db_schemas=cuidared_api` en el rol `authenticator`. Mientras exista ese override, el panel de Supabase no administra esa lista. Cambiarla o restablecerla también requiere aprobación previa.
 
+El 14 de noviembre de 2026 se aplicaron `20261114133700_backoffice.sql` y `20261114133759_backoffice_tareas.sql` con autorización explícita. El catálogo referencial proviene de `seeds/backoffice-catalogo.sql`. Los resultados están en el [registro de cambios del esquema](../docs/CAMBIOS-SCHEMA-CUIDARED.md).
+
 No hay commits autorizados. Las futuras modificaciones de esquema, datos, funciones o permisos necesitan su propia aprobación conforme a `AGENTS.md`.
