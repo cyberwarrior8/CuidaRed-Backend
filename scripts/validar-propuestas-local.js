@@ -1,6 +1,6 @@
 /* Valida las propuestas SQL en un PostgreSQL LOCAL desechable · herramientas. © 2026 Equipo CuidaRed – INTEC. */
 /*
- * Uso:  node scripts/validar-propuestas-local.js [--conservar] [--solo=2b,3a|--solo=integracion]
+ * Uso:  node scripts/validar-propuestas-local.js [--conservar] [--solo=2b,3a|--solo=integracion|--solo=cierre]
  * Requiere `psql` en el PATH y un PostgreSQL local accesible con las variables estándar (PGHOST, PGUSER,
  * PGPASSWORD…; por defecto localhost/postgres). Crea la base `cuidared_validacion_local`, carga en orden:
  *   1. docs/verificacion/local/supabase-stub.sql  (esquema auth y roles simulados)
@@ -28,17 +28,23 @@ const base = `cuidared_validacion_local_${process.pid}`;
 const conservar = process.argv.includes('--conservar');
 // --solo=2b,3a: además de la base (2a y ayudas), carga solo las propuestas y pruebas con esos prefijos.
 const soloArg = process.argv.find((a) => a.startsWith('--solo='));
+const soloCierre = soloArg === '--solo=cierre';
 const soloIntegracion = !soloArg || soloArg === '--solo=integracion';
 const solo =
-  soloArg && !soloIntegracion ? ['2a', '00', ...soloArg.slice(7).split(',').filter(Boolean)] : null;
+  soloArg && !soloIntegracion && !soloCierre
+    ? ['2a', '00', ...soloArg.slice(7).split(',').filter(Boolean)]
+    : null;
 const incluido = (codigo) => !solo || solo.some((p) => codigo.startsWith(p));
 const esMigracionBase = (nombre) =>
-  nombre.endsWith('.sql') && !/^\d{14}_fase_(2[abc]|3[ab]|4[abcd])_/.test(nombre);
+  nombre.endsWith('.sql') &&
+  !/^\d{14}_(?:fase_(2[abc]|3[ab]|4[abcd])_|cierre_fases_2_a_4_)/.test(nombre);
 const esPruebaSeleccionada = (n) =>
   /^pruebas-.*\.sql$/.test(n) &&
-  (soloIntegracion
-    ? ['pruebas-00-ayudas.sql', 'pruebas-integracion-2-4.sql'].includes(n)
-    : incluido(n.slice(8)));
+  (soloCierre
+    ? ['pruebas-00-ayudas.sql', 'pruebas-cierre-2-4.sql'].includes(n)
+    : soloIntegracion
+      ? ['pruebas-00-ayudas.sql', 'pruebas-integracion-2-4.sql'].includes(n)
+      : incluido(n.slice(8)));
 const env = { ...process.env, PGHOST: host, PGUSER: process.env.PGUSER ?? 'postgres' };
 // Evita que libpq priorice una dirección o un servicio remoto sobre PGHOST.
 delete env.PGHOSTADDR;
@@ -104,6 +110,18 @@ try {
     (n) => /^fase-(2[abc]|3[ab]|4[abcd])-.*\.sql$/.test(n) && incluido(n.slice(5)),
   )) {
     ejecutarArchivo(f, f.slice(raiz.length));
+  }
+  if (soloCierre) {
+    for (const bloque of [
+      'correcciones',
+      'consentimiento',
+      'visitas-recurrentes',
+      'indicaciones-adjuntos',
+      'auditoria',
+    ]) {
+      const archivo = `docs/propuestas/cierre-2-4-${bloque}.sql`;
+      ejecutarArchivo(join(raiz, archivo), archivo);
+    }
   }
   for (const f of ordenados(join(raiz, 'docs/verificacion/local'), esPruebaSeleccionada)) {
     ejecutarArchivo(f, f.slice(raiz.length));

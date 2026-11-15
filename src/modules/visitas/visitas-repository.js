@@ -47,6 +47,14 @@ export function createVisitasRepository(rpc) {
         await rpc('api_programar_visita', { p_cuenta_id: cuentaId, p_datos: sinNulos(datos) }),
       );
     },
+    async programarRecurrentes(cuentaId, datos) {
+      return objeto(
+        await rpc('api_programar_visitas_recurrentes', {
+          p_cuenta_id: cuentaId,
+          p_datos: sinNulos(datos),
+        }),
+      );
+    },
     async iniciar(cuentaId, visitaId) {
       return objeto(
         await rpc('api_iniciar_visita', { p_cuenta_id: cuentaId, p_visita_id: visitaId }),

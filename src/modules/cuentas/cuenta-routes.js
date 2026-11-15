@@ -1,5 +1,8 @@
 /* Detalle, configuración y suscripción de la cuenta · ID02/RF-11/RF-19/RF-20. © 2026 Equipo CuidaRed – INTEC. */
 import { Router } from 'express';
+import { z } from 'zod';
+import { createCollectionQuery, paginatedResponse } from '../../lib/collection-query.js';
+import { unavailable } from '../../lib/errors.js';
 import './cuentas-errors.js';
 import { configuracionDto, contextoDto, detalleCuentaDto, suscripcionDto } from './cuentas-dto.js';
 import { createCuentasRepository } from './cuentas-repository.js';
@@ -9,6 +12,20 @@ import {
   parseInput,
 } from './cuentas-schemas.js';
 import { requireAccesoOperativo, requirePermiso } from './require-cuenta.js';
+
+const queryAuditoria = createCollectionQuery({
+  sortableFields: ['fecha'],
+  defaultSort: '-fecha',
+  tieBreaker: 'fecha',
+});
+const eventoAuditoria = z.object({
+  auditoria_id: z.string(),
+  actor: z.string().nullable(),
+  accion: z.enum(['alta', 'actualizacion', 'baja']),
+  entidad: z.string(),
+  fecha: z.iso.datetime({ offset: true }),
+  resultado: z.literal('confirmado'),
+});
 
 /*
  * Rutas relativas a /cuentas/:cuentaId (requireCuenta ya resolvió el contexto en res.locals.cuenta).
@@ -61,6 +78,21 @@ export function createCuentaRouter({ audit }) {
     res.json({
       data: suscripcionDto(await repositorio(res).suscripcion(cuentaId(res)), { conPlanes }),
     });
+  });
+
+  router.get('/auditoria', requirePermiso('auditoria:ver'), async (req, res) => {
+    const query = queryAuditoria(req.query);
+    const raw = await res.locals.access.repository.rpc('api_auditoria_cuenta', {
+      p_cuenta_id: cuentaId(res),
+      p_limite: query.limit,
+      p_desplazamiento: query.offset,
+      p_desc: query.sort[0].direction === 'desc',
+    });
+    const eventos = z
+      .object({ items: z.array(eventoAuditoria), total: z.int().min(0) })
+      .safeParse(raw);
+    if (!eventos.success) throw unavailable();
+    res.json(paginatedResponse(eventos.data.items, { ...query, total: eventos.data.total }));
   });
 
   return router;

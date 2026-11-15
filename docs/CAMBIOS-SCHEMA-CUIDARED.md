@@ -139,3 +139,34 @@ Detalle: [revisión de nombres](catalogos/REVISION-NOMBRES-ONE-2021.md) e [infor
 **Verificación.** Las nueve copias locales coinciden por MD5 con el historial de Supabase. La [prueba transaccional](verificacion/fases-2-a-4-supabase.sql) confirmó perfil, alta con 168 horas, membresía, perfil de cuidador, expediente, programación de visitas, sincronización idempotente, recurrencia y autorización de evidencias. Las filas de prueba se revirtieron. Se comprobaron RLS y ausencia de acceso directo para las siete tablas nuevas, el bucket privado de 5 MB con cuatro políticas y la exposición limitada a `cuidared_api`. Las RPC representativas de cada fase devolvieron 401 por HTTPS sin sesión. Las funciones públicas de solicitudes permanecen revocadas. Las pruebas simularon las sesiones y comprobaron permisos de Storage sin subir archivos.
 
 **Configuración de Auth.** Con aprobación separada, se habilitó el registro por correo en Supabase y se guardó la plantilla «Confirma tu correo en CuidaRed» con `{{ .Token }}`. El panel confirmó el requisito de confirmar el correo, códigos de 6 dígitos y vigencia de 900 segundos. La comprobación de entrega del correo corresponde a la prueba desde la aplicación.
+
+## CUIDARED-008 — Correcciones de las fases 2 a 4
+
+**Estado.** El usuario aprobó la aplicación el 13/11/2026. Los cinco bloques se aplicaron en una sola transacción en Supabase CuidaRed. La [migración aplicada](../supabase/migrations/20261114022629_cierre_fases_2_a_4_cuidared_008.sql) quedó registrada como `20261114022629` (UTC).
+
+### Tabla nueva en `cuidared`
+
+| Tabla | Campos |
+| --- | --- |
+| `evidencia_indicacion` | `evidencia_indicacion_id uuid` PK, `indicacion_medica_id uuid` FK, `registrada_por uuid` FK a usuario, `ruta text` única, `nombre_archivo text`, `tipo_mime text`, `tamano_bytes integer`, `fecha_registro timestamptz`. Todos obligatorios. RLS y acceso por RPC. |
+
+### Tablas existentes
+
+| Tabla | Cambio |
+| --- | --- |
+| `envejeciente` | `consentimiento_retirado_en timestamptz`, `consentimiento_retirado_por uuid` FK y `consentimiento_retiro_motivo text` opcional. Restricción de coherencia e índice parcial por cuenta y fecha de retiro. |
+| `visita` | `serie_id uuid` para las ocurrencias nuevas y un índice parcial por cuenta/serie. |
+| `riesgo` | Cinco factores de V2 por nombre y código. Se conserva el catálogo previo. |
+| `auditoria` | Nuevos eventos para evaluación, solicitud y evidencias mediante disparadores que guardan la referencia de la fila y su contenedor. |
+
+### Funciones, disparadores y orden de aplicación
+
+1. [Correcciones](propuestas/cierre-2-4-correcciones.sql). Revisa alcance, candidatos, asignaciones y registro de visitas (incluye sincronización). Agrega una variante de `api_guardar_cuidador_miembro` que permite conservar el empleador global. La firma previa sigue siendo válida.
+2. [Retiro de consentimiento](propuestas/cierre-2-4-consentimiento.sql). Añade las RPC `api_retirar_consentimiento` y `api_consentimientos_retirados`. Actualiza el alcance de expedientes, visitas e historial y el acceso a tareas. Los disparadores `envejeciente_retiro_inmutable` y `tarea_requiere_consentimiento` protegen el retiro y el trabajo nuevo. La misma transacción cancela las visitas y tareas operativas abiertas y cierra las alertas abiertas. Una visita grupal vinculada al expediente retirado queda fuera del historial operativo de todos sus participantes y se conserva para custodia.
+3. [Series de visitas](propuestas/cierre-2-4-visitas-recurrentes.sql). `api_programar_visitas_recurrentes` vuelve a comprobar vigencia, funcionalidad del plan y autorización de cada visita. Si falla una ocurrencia, se revierte la serie.
+4. [Adjuntos de indicaciones](propuestas/cierre-2-4-indicaciones-adjuntos.sql). RPC para preparar subida, registrar y listar. Dos políticas nuevas en `storage.objects` basadas en `cuidared_storage.evidencia_indicacion_permitida`. Reutiliza el bucket privado `evidencias` con 5 MiB y JPG, PNG, WebP o PDF.
+5. [Auditoría](propuestas/cierre-2-4-auditoria.sql). `api_auditoria_cuenta` consulta los cambios confirmados cuya cuenta es verificable. `trg_auditoria_referencia` se instala en `evaluacion_riesgo`, `solicitud_visita`, `evidencia_visita` y `evidencia_indicacion`. La respuesta omite los valores de las filas. Los eventos globales que carecen de cuenta verificable y las peticiones técnicas rechazadas quedan fuera de esta consulta.
+
+**Conservación.** Mantener el consentimiento original, la constancia, el expediente y los archivos. Revisar caso por caso cualquier eliminación, incluida la de archivos que quedaron sin registrar tras una subida interrumpida. Las URL privadas emitidas antes de un retiro vencen en un máximo de cinco minutos. Las solicitudes de nuevas URLs vuelven a comprobar permisos. Si hay que corregir un despliegue, preparar una migración que conserve las constancias, series y referencias de archivos que ya se hayan creado.
+
+**Verificación.** El [juego local de cierre](verificacion/local/pruebas-cierre-2-4.sql) pasó en PostgreSQL desechable con Auth y Storage simulados. En Supabase se confirmaron cinco factores, cuatro columnas, seis disparadores y dos políticas de Storage. La tabla nueva tiene RLS y solo se consulta por RPC. Las siete RPC nuevas verificadas exigen autenticación y las RPC públicas siguen revocadas. El bucket es privado y conserva el límite de 5 MiB. El historial remoto registró la huella MD5 `b45f62359b874fd7f833ff984cea3069` sobre las sentencias que conserva Supabase. Queda por verificar el envío de correo y la subida y descarga real de archivos.

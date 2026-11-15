@@ -2,7 +2,7 @@
 
 ## Alcance y estado
 
-ID02; RF-09, RF-11, RF-12; CR-162, CR-164. Implementado en `src/modules/miembros/`. Persistencia: **propuesta sin aplicar** en [`fase-2c-miembros.sql`](../propuestas/fase-2c-miembros.sql), sobre [`fase-2a-base.sql`](../propuestas/fase-2a-base.sql); no se aplica sin aprobación expresa. Validada solo contra un PostgreSQL local desechable (`node scripts/validar-propuestas-local.js --solo=2c`), que no certifica RLS ni Auth de Supabase. No crea tablas nuevas: usa `membresia`, `cuidador`, `vinculo`, `notificacion` y `cuenta` de `DB.sql`.
+ID02; RF-09, RF-11, RF-12; CR-162, CR-164. Implementado en `src/modules/miembros/`. El bloque 2c está aplicado. La opción de conservar el empleador se define en la [propuesta de cierre](../CAMBIOS-SCHEMA-CUIDARED.md#cuidared-008--correcciones-de-las-fases-2-a-4).
 
 Las decisiones marcadas **Propuesta técnica (Dxx)** eligen lo más simple compatible con las Reglas de Negocio V2; siguen abiertas en CONTEXTO §15.2 hasta que el usuario las confirme.
 
@@ -92,7 +92,7 @@ Una fila **por persona**: su membresía vigente (pendiente o activa) o, si no ti
 2. Si la persona **no existe**: sin `deps.adminGateway` → 503 `INVITATIONS_UNAVAILABLE`. Con él, `adminGateway.inviteUser({ email, cedula, nombres, apellidos })` crea la identidad Auth (el trigger crea el perfil y se envía el correo con el código). Es la única operación con la clave secreta y no toca tablas de negocio.
 3. `api_agregar_miembro` (RPC con el JWT de quien invita) vuelve a comprobar **todo** bajo el bloqueo de la cuenta (permiso, rol, identidad por correo y cédula —nunca por un id del cliente—, membresía vigente y cupo) y crea la membresía **pendiente** (`fecha_inicio` = hoy de negocio) y una **notificación personal** para la persona.
 
-Si el paso 3 falla tras crear la identidad (p. ej. otra invitación ocupó el último cupo), la identidad queda sin membresía; reintentar la invitación encuentra a la persona ya registrada y continúa desde el paso 3 sin enviar otro correo. Una invitación pendiente **no concede acceso**: `membresia_activa` solo devuelve membresías `activa`. Las invitaciones se limitan a 30 por persona que invita cada 15 minutos (429), porque pueden enviar correo y confirman si un correo ya tiene perfil.
+Si el paso 3 falla tras crear la identidad, la identidad queda sin membresía. Reintentar la invitación encuentra el perfil y continúa desde el paso 3. Una invitación pendiente no concede acceso operativo. `POST /cuentas/:cuentaId/miembros/:membresiaId/reenviar-invitacion` exige una membresía pendiente en la cuenta y `usuarios:gestionar`. Recibe un cuerpo vacío y devuelve `{data:{resultado}}`. `enviada` significa que Auth aceptó enviar otro correo. `perfil_activo` significa que la persona ya puede ver su invitación al iniciar sesión. El cupo de envíos y reenvíos es compartido, 30 por persona gestora en 15 minutos.
 
 ### Aceptar o rechazar (`/me/membresias/:id/…`)
 
@@ -112,7 +112,7 @@ Solo la persona titular actual (403 si no lo es). El destino debe ser **otra** p
 
 ### Perfil Cuidador (RF-12)
 
-Un perfil vigente (`fecha_fin` nula) por persona y cuenta (`uq_cuidador_vigente`): una misma persona puede ser Cuidador de varias cuentas, con un perfil en cada una. `POST` hace upsert del perfil vigente; solo para miembros con rol `cuidador` y membresía `pendiente` o `activa` (`CR_NO_ES_CUIDADOR`, `CR_ESTADO_INVALIDO`); `tipo_cuidado_id` debe existir (422). **Propuesta técnica (D14):** si `cuidador_independiente` es `false`, `usuario_empleador_id` es el **titular** de la cuenta (siempre es gestor: Coordinador en Familia, Administrador en Organización) aunque el perfil lo registre otro gestor; si es `true`, queda `null`. `finalizar` pone `fecha_fin` = hoy (`CR_ESTADO_INVALIDO` si no hay perfil vigente); registrar uno nuevo después conserva el historial.
+El perfil de Cuidador es global y requiere una membresía activa como Cuidador. `POST` crea o actualiza el perfil de la persona. El tipo de cuidado debe existir (422). Al elegir «Trabaja por cuenta propia», se limpia el empleador. Al asignar el empleador de la cuenta, se usa el titular actual. `conservar_empleador: true` cambia solo el tipo de cuidado en un perfil vigente. La API oculta el identificador de un empleador ajeno. La baja de una membresía no elimina el perfil global.
 
 ## Errores
 

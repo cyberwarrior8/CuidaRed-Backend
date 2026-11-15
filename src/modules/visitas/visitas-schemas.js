@@ -62,6 +62,17 @@ export const programarVisitaSchema = z.strictObject({
   participante_ids: z.array(uuid).min(1).max(3).refine(sinRepetidos),
 });
 
+export const programarVisitasRecurrentesSchema = programarVisitaSchema.extend({
+  repeticion: z.discriminatedUnion('frecuencia', [
+    z.strictObject({ frecuencia: z.literal('diaria'), hasta: fecha }),
+    z.strictObject({
+      frecuencia: z.literal('semanal'),
+      hasta: fecha,
+      dias_semana: z.array(z.number().int().min(1).max(7)).min(1).max(7).refine(sinRepetidos),
+    }),
+  ]),
+});
+
 const detalleSchema = z.strictObject({
   envejeciente_id: uuid,
   // Obligatorio salvo para el Voluntario (registro mínimo); lo decide el servidor según el rol real de quien registra.
@@ -87,6 +98,7 @@ export const autorizarSolicitudSchema = z.strictObject({
   envejeciente_id: uuid,
   fecha,
   hora,
+  participante_id: uuid.optional(),
 });
 export const rechazarSolicitudSchema = z.strictObject({ motivo: texto(3, 300) });
 

@@ -99,6 +99,36 @@ function setup({ ctx = contexto(), rpc = {}, admin } = {}) {
 const http = (app, method, path) =>
   request(app)[method](`/api/v1${path}`).auth('token', { type: 'bearer' });
 
+describe('reenvío de invitación', () => {
+  it('envía el correo de la identidad pendiente sin crear otra membresía', async () => {
+    const pendiente = miembro({ estado: 'pendiente' });
+    const admin = { resendInvitation: vi.fn().mockResolvedValue('enviada') };
+    const { app, llamadas } = setup({ admin, rpc: { api_detalle_miembro: () => pendiente } });
+    const res = await http(app, 'post', '/cuentas/7/miembros/21/reenviar-invitacion').expect(200);
+    expect(res.body).toEqual({ data: { resultado: 'enviada' } });
+    expect(admin.resendInvitation).toHaveBeenCalledOnce();
+    expect(admin.resendInvitation).toHaveBeenCalledWith({
+      id: pendiente.usuario.id,
+      email: pendiente.usuario.correo,
+    });
+    expect(llamadas('api_invitar_miembro')).toHaveLength(0);
+  });
+
+  it('no usa el servicio de correo si la membresía ya está activa o es ajena', async () => {
+    const admin = { resendInvitation: vi.fn() };
+    const rpc = {
+      api_detalle_miembro: ({ p_membresia_id }) => {
+        if (p_membresia_id === '21') return miembro();
+        throw mapRpcError({ code: 'P0002', message: 'privado' });
+      },
+    };
+    const { app } = setup({ admin, rpc });
+    await http(app, 'post', '/cuentas/7/miembros/21/reenviar-invitacion').expect(409);
+    await http(app, 'post', '/cuentas/7/miembros/22/reenviar-invitacion').expect(404);
+    expect(admin.resendInvitation).not.toHaveBeenCalled();
+  });
+});
+
 describe('sesión y contexto de cuenta', () => {
   it.each([
     ['get', '/cuentas/7/miembros'],

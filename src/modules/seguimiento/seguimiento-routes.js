@@ -1,6 +1,12 @@
 /* Asignaciones, permisos familiares, riesgos, indicaciones e historial · ID03/RF-12/RF-13/RF-14/RF-15. © 2026 Equipo CuidaRed – INTEC. */
 import { Router } from 'express';
-import { AppError } from '../../lib/errors.js';
+import { AppError, unavailable } from '../../lib/errors.js';
+import { DESCARGA_SEGUNDOS, EVIDENCIAS_BUCKET } from '../agenda/agenda-service.js';
+import {
+  parseBody as parseEvidence,
+  registrarEvidenciaSchema,
+  subidaEvidenciaSchema,
+} from '../agenda/agenda-schemas.js';
 import { requirePermiso } from '../cuentas/require-cuenta.js';
 import { ERRORES_SEGUIMIENTO } from './seguimiento-errors.js';
 import { createSeguimientoRepository } from './seguimiento-repository.js';
@@ -208,6 +214,56 @@ export function createSeguimientoRouter({ audit }) {
       const datos = parseBody(estadoIndicacionSchema, req.body);
       const data = await repo(res).cambiarEstadoIndicacion(cuentaDe(res), indicacionId, datos);
       log(res, 'indicacion.estado_cambiado');
+      res.json({ data });
+    },
+  );
+
+  const evidenciaRpc = (res, req, name, body) =>
+    res.locals.access.repository.rpc(name, {
+      p_cuenta_id: cuentaDe(res),
+      p_indicacion_id: uuidParam(req.params.indicacionId),
+      ...(body ? { p_datos: body } : {}),
+    });
+
+  router.post(
+    '/indicaciones/:indicacionId/evidencias/subida',
+    requirePermiso('indicaciones:gestionar'),
+    async (req, res) => {
+      const datos = parseEvidence(subidaEvidenciaSchema, req.body);
+      res.json({ data: await evidenciaRpc(res, req, 'api_indicacion_preparar_evidencia', datos) });
+    },
+  );
+
+  router.post(
+    '/indicaciones/:indicacionId/evidencias',
+    requirePermiso('indicaciones:gestionar'),
+    async (req, res) => {
+      const datos = parseEvidence(registrarEvidenciaSchema.omit({ observacion: true }), req.body);
+      const data = await evidenciaRpc(res, req, 'api_indicacion_registrar_evidencia', datos);
+      log(res, 'indicacion.evidencia_registrada');
+      res.status(201).json({ data });
+    },
+  );
+
+  router.get(
+    '/indicaciones/:indicacionId/evidencias',
+    requirePermiso('indicaciones:ver'),
+    async (req, res) => {
+      const rows = await evidenciaRpc(res, req, 'api_indicacion_listar_evidencias');
+      if (!Array.isArray(rows)) throw unavailable();
+      const storage = res.locals.access.repository.storage(EVIDENCIAS_BUCKET);
+      const data = await Promise.all(
+        rows.map(async ({ evidencia_id, nombre_archivo, ruta }) => {
+          if (typeof ruta !== 'string') throw unavailable();
+          try {
+            const url_descarga = await storage.signedDownloadUrl(ruta, DESCARGA_SEGUNDOS);
+            return { evidencia_id, nombre_archivo, url_descarga };
+          } catch (error) {
+            if (!(error instanceof AppError) || error.status !== 404) throw error;
+            return { evidencia_id, nombre_archivo, url_descarga: null };
+          }
+        }),
+      );
       res.json({ data });
     },
   );

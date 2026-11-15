@@ -1,5 +1,12 @@
 # Cambios actuales
 
+## 13/11/2026 — Correcciones de las fases 2 a 4
+
+- `src/modules/cuentas/` y `src/modules/miembros/`: vencimiento en el resumen, reenvío de invitaciones pendientes, preservación del empleador global y consulta de auditoría.
+- `src/modules/envejecientes/` y `src/modules/seguimiento/`: retiro con constancia, controles de alcance, cinco factores y adjuntos médicos privados.
+- `src/modules/visitas/` y las propuestas de persistencia: series autorizadas, límites de captura del Voluntario e historial con responsable. El flujo público sigue cerrado.
+- [Alcance y validación del esquema](docs/CAMBIOS-SCHEMA-CUIDARED.md#cuidared-008--correcciones-de-las-fases-2-a-4). SQL verificado localmente y aplicado con aprobación en Supabase como migración `20261114022629`. Pasaron 1,071 pruebas de backend.
+
 ## 09/11/2026 — Fases 2 a 4 aplicadas en Supabase
 
 - Se aplicaron los nueve bloques y se archivaron en `supabase/migrations/`. Los ajustes de compatibilidad conservaron los índices equivalentes, reemplazaron las reglas anteriores de prueba y horas de visita, y permitieron reconocer la PK original de `vinculo`.

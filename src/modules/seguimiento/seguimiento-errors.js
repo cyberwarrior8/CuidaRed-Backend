@@ -7,6 +7,11 @@ import { registerBusinessErrors } from '../../lib/business-errors.js';
  * CR_ESTADO_INVALIDO (409), CR_ROL_NO_PERMITIDO (422, voluntario en Familia) y CR_CUENTA_SIN_ACCESO (403).
  */
 export const ERRORES_SEGUIMIENTO = {
+  CR_PERFIL_CUIDADOR_REQUERIDO: {
+    status: 422,
+    publicCode: 'CAREGIVER_PROFILE_REQUIRED',
+    message: 'Configura el perfil de Cuidador antes de asignar a esta persona.',
+  },
   CR_ROL_NO_COMPATIBLE: {
     status: 422,
     publicCode: 'ROLE_NOT_COMPATIBLE',
