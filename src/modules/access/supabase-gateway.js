@@ -5,6 +5,14 @@ import { AppError, unavailable } from '../../lib/errors.js';
 
 const expired = () => new AppError(401, 'INVALID_SESSION', 'Inicia sesión de nuevo.');
 
+function authUnavailable(operation, error) {
+  return Object.assign(unavailable(), {
+    dependency: 'supabase.auth.' + operation,
+    upstreamStatus: error.status,
+    upstreamCode: /^[a-z0-9_]{1,64}$/i.test(error.code ?? '') ? error.code : undefined,
+  });
+}
+
 /**
  * Traduce el error de una RPC a un error público (CR-162). `conflict` permite a cada operación dar su propio
  * código y mensaje para 23505 (p. ej. PROFILE_CONFLICT en el perfil propio).
@@ -67,10 +75,28 @@ export function createSupabaseGateway(env, fetchImpl = globalThis.fetch) {
 
   return {
     publico: () => ({ rpc: publicRpc }),
+    async passwordSession(email, password) {
+      const client = createClient(env.SUPABASE_URL, env.SUPABASE_PUBLISHABLE_KEY, options);
+      const { data, error } = await client.auth.signInWithPassword({ email, password });
+      if (error) {
+        if (error.status === 429)
+          throw new AppError(429, 'RATE_LIMITED', 'Espera antes de volver a intentar.');
+        if (error.status >= 500 || error.name === 'AuthRetryableFetchError')
+          throw authUnavailable('signInWithPassword', error);
+        throw new AppError(401, 'INVALID_CREDENTIALS', 'Correo o contraseña incorrectos.');
+      }
+      if (!data.session) throw expired();
+      return {
+        access_token: data.session.access_token,
+        refresh_token: data.session.refresh_token,
+        actorId: data.user.id,
+      };
+    },
     async authenticate(token) {
       const { data, error } = await authClient.auth.getUser(token);
       if (error) {
-        if (error.status >= 500 || error.name === 'AuthRetryableFetchError') throw unavailable();
+        if (error.status >= 500 || error.name === 'AuthRetryableFetchError')
+          throw authUnavailable('getUser', error);
         throw expired();
       }
       if (!data.user || data.user.is_anonymous || !data.user.email_confirmed_at) throw expired();

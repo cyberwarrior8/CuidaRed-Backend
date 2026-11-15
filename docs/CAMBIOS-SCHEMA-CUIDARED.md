@@ -139,3 +139,14 @@ Detalle: [revisión de nombres](catalogos/REVISION-NOMBRES-ONE-2021.md) e [infor
 **Verificación.** Las nueve copias locales coinciden por MD5 con el historial de Supabase. La [prueba transaccional](verificacion/fases-2-a-4-supabase.sql) confirmó perfil, alta con 168 horas, membresía, perfil de cuidador, expediente, programación de visitas, sincronización idempotente, recurrencia y autorización de evidencias. Las filas de prueba se revirtieron. Se comprobaron RLS y ausencia de acceso directo para las siete tablas nuevas, el bucket privado de 5 MB con cuatro políticas y la exposición limitada a `cuidared_api`. Las RPC representativas de cada fase devolvieron 401 por HTTPS sin sesión. Las funciones públicas de solicitudes permanecen revocadas. Las pruebas simularon las sesiones y comprobaron permisos de Storage sin subir archivos.
 
 **Configuración de Auth.** Con aprobación separada, se habilitó el registro por correo en Supabase y se guardó la plantilla «Confirma tu correo en CuidaRed» con `{{ .Token }}`. El panel confirmó el requisito de confirmar el correo, códigos de 6 dígitos y vigencia de 900 segundos. La comprobación de entrega del correo corresponde a la prueba desde la aplicación.
+
+## Backoffice CuidaRed · 14/11/2026
+
+| Campo        | Registro                                                                                                                                                                                                               |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Alcance      | Estados de cuenta y usuario, membresía interna y sesiones, catálogo gratuito, extensiones, configuración, marcas, logs, señales de cambio y auditoría. Integra el control operativo de la PWA y el seguimiento diario. |
+| SQL          | `supabase/migrations/20261114133700_backoffice.sql`, `supabase/migrations/20261114133759_backoffice_tareas.sql` y `supabase/seeds/backoffice-catalogo.sql`. |
+| Estado       | Aplicado en el proyecto CuidaRed el 14/11/2026 con autorización explícita del usuario. Supabase registró las versiones indicadas. La tarea diaria quedó activa. |
+| Verificación | Pruebas en PostgreSQL aislado con el cierre remoto `20261114022629`. En Supabase se confirmaron el bucket, los permisos de las RPC, el catálogo, la tarea activa y una ejecución de mantenimiento revertida. La RPC pública de marca devolvió HTTP 200. |
+
+El 14/11/2026 se aprovisionaron en Supabase Auth tres operadores sintéticos, confirmados y sin membresía PWA, con los roles `super_admin`, `soporte` y `auditor`. Se verificaron ingreso, TOTP real, permisos, consultas, persistencia y entrega de logs por SSE desde Express sin exponer las credenciales. La verificación generó eventos de auditoría y telemetría de prueba.
