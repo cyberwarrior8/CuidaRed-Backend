@@ -1,5 +1,27 @@
 # Cambios actuales
 
+## 15/11/2026 — Fases 5 y 6 aplicadas en Supabase
+
+- Las migraciones `20261115231642` y `20261115231810` registran el esquema de Necesidades y Alertas y el trabajo diario. Ver [CUIDARED-009](docs/CAMBIOS-SCHEMA-CUIDARED.md#cuidared-009--necesidades-y-alertas).
+- La prueba transaccional verificó sincronización, precisión, alertas por fuente, avisos, cierre y auditoría. Los datos de prueba se revirtieron. La evaluación inicial dejó una alerta y un aviso para datos existentes.
+- El validador local excluye las migraciones consolidadas de CUIDARED-009 al probar los cinco bloques por separado.
+
+## 15/11/2026 — Revisión de las fases 5 y 6
+
+- Necesidades devuelve el estado del expediente y mantiene los permisos y el cupo al sincronizar. La cola recupera rechazos propios y un límite del plan afecta solo a la operación correspondiente. La propuesta SQL protege el avance de la versión que usa el conflicto offline.
+- La propuesta de Necesidades conserva los decimales enviados por la API y admite unidades de hasta 64 caracteres, según la decisión del 15/11/2026.
+- Alertas comprueba la consistencia de la fuente, excluye expedientes inactivos o retirados de las bandejas y muestra el actor de atención autorizado. El motor distingue visitas completadas del mismo día por su hora efectiva.
+- La propuesta de auditoría guarda referencias sin copiar descripciones ni motivos y la programación diaria evalúa los datos existentes al activarse. Ver [CUIDARED-009](docs/CAMBIOS-SCHEMA-CUIDARED.md#cuidared-009--necesidades-y-alertas).
+- Validación local con 1.091 pruebas del backend y pruebas SQL de los cinco bloques. La primera evaluación y programación se verificaron con Cron simulado.
+
+## 15/11/2026 — Inicio de las fases 5 y 6
+
+- `src/modules/necesidades/` conecta catálogo, alta de ocurrencias, prioridades, responsables, estados e historial conforme a V2 y RF-03.
+- `src/modules/sync/` recibe altas y cambios de estado con reintentos idempotentes y resolución de conflictos de RF-10.
+- `src/modules/alertas/` conecta alertas, casos prioritarios por adulto y avisos internos. El motor propuesto cubre las tres fuentes aprobadas. Ver [contrato](docs/contratos/alertas.md).
+- Las propuestas SQL y la programación diaria se documentan en [CUIDARED-009](docs/CAMBIOS-SCHEMA-CUIDARED.md#cuidared-009--necesidades-y-alertas). Quedan en local para revisión.
+- Validación local: 1.090 pruebas de backend, ESLint, formato de los archivos JavaScript modificados y cuatro escenarios SQL de fases 5 y 6 en PostgreSQL desechable con Auth simulado.
+
 ## 13/11/2026 — Correcciones de las fases 2 a 4
 
 - `src/modules/cuentas/` y `src/modules/miembros/`: vencimiento en el resumen, reenvío de invitaciones pendientes, preservación del empleador global y consulta de auditoría.

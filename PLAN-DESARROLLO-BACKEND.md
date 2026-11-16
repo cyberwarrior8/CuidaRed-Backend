@@ -14,8 +14,8 @@ Cada fase entrega API, pruebas, documentación e integración mínima con el fro
 | 2    | Organización          | 2a–2c y cierre aplicados. Reenvío y auditoría conectados. Pendiente verificar entrega real de correo. |
 | 3    | Envejecientes         | 3a–3b y cierre aplicados. Retiro, factores y adjuntos conectados. Pendiente verificar archivos reales. |
 | 4    | Visitas y Seguimiento | 4a–4d y cierre aplicados. Series, captura offline y bandeja interna conectadas. |
-| 5    | Necesidades           | Pendiente; resolver catálogos, validaciones y transiciones.                                                                     |
-| 6    | Alertas               | Pendiente; resolver fuentes, ciclo, destinatarios y calendario.                                                                 |
+| 5    | Necesidades           | SQL aplicado y verificado en Supabase. Catálogo, ocurrencias, prioridad, historial y sincronización listos para pruebas manuales. |
+| 6    | Alertas               | SQL verificado en Supabase. Evaluación inicial ejecutada y tarea diaria activa. Pendientes las pruebas manuales en el navegador. |
 | 7    | Reportes              | Pendiente; resolver métricas, formatos y contenido médico.                                                                      |
 | 8    | Suscripción y Pagos   | Pendiente; resolver oferta comercial y ciclo de suscripción sandbox.                                                            |
 
@@ -88,7 +88,7 @@ Cada fase entrega API, pruebas, documentación e integración mínima con el fro
 
 **Entregables:** necesidades, historial y sincronización integrados. **Cierre:** recurrencias preservadas, permisos aplicados en servidor y pendientes offline sin duplicados ni pérdida silenciosa.
 
-**Preparación:** catálogos, validaciones y transiciones. **Dependencias:** fases 3 y 4. **Trazabilidad:** ID05; RF-03, RF-10.
+**Contrato:** [Necesidades](docs/contratos/necesidades.md) y [sincronización](docs/contratos/sync.md). **Dependencias:** fases 3 y 4. **Trazabilidad:** ID05; RF-03, RF-10.
 
 ## Fase 6 — Alertas
 
@@ -100,7 +100,7 @@ Cada fase entrega API, pruebas, documentación e integración mínima con el fro
 
 **Entregables:** motor, ejecución periódica, notificaciones y bandeja conectada. **Cierre:** alertas independientes por fuente, causas sin duplicación, solo visitas realizadas reinician seguimiento y notificaciones sin exposición indebida.
 
-**Preparación:** identidad de fuentes, cierre/reapertura, destinatarios, periodicidad y zona horaria. **Dependencias:** fases 3, 4 y 5. **Trazabilidad:** ID06; RF-04, RF-05, RF-18.
+**Contrato:** [Alertas](docs/contratos/alertas.md). **Dependencias:** fases 3, 4 y 5. **Trazabilidad:** ID06; RF-04, RF-05, RF-18.
 
 ## Fase 7 — Reportes
 

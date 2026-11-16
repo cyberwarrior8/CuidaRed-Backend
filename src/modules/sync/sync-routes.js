@@ -1,4 +1,4 @@
-/* Sincronización de visitas sin conexión (LWW, idempotencia) · ID04/RF-10. © 2026 Equipo CuidaRed – INTEC. */
+/* Sincronización de visitas y necesidades sin conexión · ID04, ID05, RF-10. © 2026 Equipo CuidaRed – INTEC. */
 import { Router } from 'express';
 import { AppError } from '../../lib/errors.js';
 import { requirePermiso } from '../cuentas/require-cuenta.js';

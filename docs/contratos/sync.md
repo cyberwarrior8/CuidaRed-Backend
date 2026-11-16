@@ -1,8 +1,8 @@
-# Contrato de sincronización de visitas sin conexión — fase 4, bloque 4c
+# Contrato de sincronización de visitas y necesidades
 
 ## Estado y alcance
 
-ID04; RF-10 (CU-14), RF-4.5 y RNF-4.2. Código, pruebas y **propuesta SQL sin aplicar** ([fase-4c-sync.sql](../propuestas/fase-4c-sync.sql)); no hay migración ni cambio de base de datos hasta recibir aprobación expresa. Sincroniza **solo visitas** (registrar una visita realizada o iniciarla). Las necesidades son de la fase 5: el diseño es extensible por `entidad` y cualquier otra se rechaza por operación con `ENTIDAD_NO_SOPORTADA`.
+ID04 e ID05. RF-10 (CU-14), RF-4.5 y RNF-4.2. Las visitas se sincronizan sobre el bloque 4c aplicado. La [propuesta de fase 5](../propuestas/fase-5-sync-necesidades.sql) agrega el registro y cambio de estado de necesidades al mismo lote.
 
 Se construye sobre `cuidared_interno.registrar_visita_realizada` e `iniciar_visita` del [bloque 4a](visitas.md#función-interna-para-la-sincronización-bloque-4c), que ya son idempotentes por `visita_id` y revalidan membresía, permiso, acceso operativo, alcance y participación. Este bloque añade la idempotencia por operación, Last-Write-Wins y el protocolo de lote que consume el cliente aprobado (`src/domain/sync.ts` del frontend: lotes de 25, `claveCliente`, reintentos con espera exponencial y LWW por instante UTC).
 
@@ -10,22 +10,22 @@ Las convenciones de errores y cuerpos son las de [CR-162](../CONVENCIONES-API.md
 
 ## Decisiones
 
-**D16 sigue abierta** en `CONTEXTO-BACKEND.md` §15.2. Lo que sigue es una **propuesta técnica** para discutirla, no una decisión acordada; cambiar cualquiera de estas reglas no toca el contrato de visitas.
+El 14/11/2026 se confirmó que las necesidades reutilizan las reglas de visitas y la cola en memoria de la pestaña. La autorización requiere tanto el permiso de la acción específica como sync:usar.
 
 | Tema                          | Decisión                                                                                                                                                                                                                                                                                                                                           | Origen                                                  |
 | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
 | Regla de conflicto            | Last-Write-Wins por marca de modificación UTC, conservando la versión más reciente. Sin duplicados al reintentar. Permisos revalidados al sincronizar. Cuenta vencida: sin escrituras operativas.                                                                                                                                                  | V2/SRS RF-10 y D07, confirmado                          |
-| Qué sincroniza                | Visitas: `registrar` (crea la visita realizada sin programar o completa una programada o en curso) e `iniciar`. Roles con `sync:usar`: Coordinador, Cuidador y Voluntario. Administrador y Familiar no.                                                                                                                                            | **Propuesta técnica (D16)**; matriz D04                 |
+| Qué sincroniza | Visitas autorizadas existentes (iniciar o registrar) y necesidades (registrar o cambiar estado). Cada operación exige su permiso y sync:usar. | D16 |
 | Atomicidad                    | Una transacción por operación (una RPC por operación). El lote **no** es atómico: una operación rechazada no revierte las demás.                                                                                                                                                                                                                   | **Propuesta técnica (D16)**                             |
 | Orden y dependencias          | Se procesan en el orden recibido (el orden de captura del cliente): `iniciar` y luego `registrar` de la misma visita funcionan en un mismo lote.                                                                                                                                                                                                   | **Propuesta técnica (D16)**                             |
-| Límites                       | 1 a 25 operaciones por lote (el tamaño del cliente) y 64 KB por operación en la base. El cuerpo de toda la API está limitado a 16 kB: ver [límites conocidos](#límites-conocidos-y-cambios-necesarios-fuera-del-bloque).                                                                                                                           | **Propuesta técnica (D16)**                             |
+| Límites | 1 a 25 operaciones. Esta ruta admite hasta 256 kB y cada operación no puede superar 64 kB en la base. | Protocolo aplicado |
 | Idempotencia                  | `id_cliente` (UUID de la operación, la `claveCliente` del cliente) se guarda en `operacion_sync`. Un reintento de una operación ya resuelta devuelve su resultado como `duplicada` sin aplicar nada. La clave no se puede reutilizar por otro usuario, en otra cuenta ni para otra operación (`ID_CLIENTE_EN_USO`).                                | **Propuesta técnica (D16)**                             |
 | Reloj                         | La marca de escritura es la del dispositivo (`actualizado_en`, ISO 8601 UTC con `Z`). Una marca (o la versión base) con más de **5 minutos en el futuro** se rechaza (`RELOJ_INVALIDO`). No hay límite inferior: un reloj atrasado solo hace perder los conflictos. La comparación es en milisegundos, que es lo que conserva el cliente.          | **Propuesta técnica (D16)**                             |
 | Desempate                     | En empate de marcas gana el servidor (resultado estable al reintentar).                                                                                                                                                                                                                                                                            | Comportamiento del cliente aprobado; **propuesta**      |
-| Granularidad                  | El conflicto es de la **visita completa**, no por campo. Una visita `completada` o `cancelada` es terminal (D10) y nunca se modifica, aunque la marca del cliente sea más reciente.                                                                                                                                                                | **Propuesta técnica (D16, D10)**                        |
+| Granularidad | El conflicto se resuelve por ocurrencia completa. Las visitas completadas o canceladas y las necesidades resueltas o canceladas son terminales. | D10/D16 |
 | Marca del servidor            | La versión base es `visita.fecha_actualizacion`. Si esa versión la produjo una operación sincronizada, se compara la marca del dispositivo de esa operación (no la hora en que llegó); así el orden de llegada de un lote no decide quién escribió después, y una operación posterior de la misma persona sobre su propia versión no es conflicto. | **Propuesta técnica (D16)**                             |
 | Confirmación al cliente       | Un resultado por operación con `actualizado_en_servidor` (la versión del servidor tras resolver). La versión ganadora completa se lee con `GET /visitas/:visitaId`.                                                                                                                                                                                | **Propuesta técnica (D16)**                             |
-| Reintentos y rechazos         | `aplicada`, `conflicto` y `duplicada` son definitivas. Una `rechazada` **se vuelve a evaluar** al reintentar con la misma clave (puede haberse renovado la cuenta, corregido el reloj o restablecido el permiso); los efectos siguen siendo idempotentes por `visita_id`.                                                                          | **Propuesta técnica (D16)**                             |
+| Reintentos y rechazos         | `aplicada`, `conflicto` y `duplicada` son definitivas. Una `rechazada` se vuelve a evaluar al reintentar con la misma clave. Los efectos de una visita o necesidad siguen siendo idempotentes por el identificador del registro. | D16 |
 | Cuenta vencida o permisos     | Una cuenta vencida rechaza todas las operaciones con `SUBSCRIPTION_INACTIVE` y queda constancia, sin escribir nada operativo. El cliente conserva su cola y reintenta al renovar. La falta de permiso o de alcance es `FORBIDDEN`, sin revelar datos.                                                                                              | D07 confirmado; conservación y reintento: **propuesta** |
 | Contenido descartado          | El servidor no conserva el contenido de la operación que pierde (ni de ninguna): solo qué se pidió, qué se resolvió y con qué marcas. El cliente decide cuándo limpiar su copia local.                                                                                                                                                             | **Propuesta técnica (D16)**; RS-018                     |
 | Zona horaria de negocio       | Las marcas son UTC. La fecha de negocio sigue siendo `America/Santo_Domingo` (`cuidared_interno.hoy()`), como en 4a.                                                                                                                                                                                                                               | Ya aplicada en 2a/4a                                    |
@@ -58,17 +58,19 @@ Prefijo `/api/v1/cuentas/:cuentaId`, tras `requireCuenta`. Cada RPC vuelve a aut
 }
 ```
 
-- `id_cliente`: UUID de la operación (clave de idempotencia). `registro_id`: UUID de la visita, generado por el cliente al crearla. `entidad` y `tipo`: nombres en minúsculas y guion bajo (hasta 30 caracteres).
+- id_cliente identifica la operación de forma idempotente. registro_id es el UUID de la visita autorizada o de la ocurrencia de necesidad. En el alta de una necesidad el cliente genera ese UUID.
 - `actualizado_en`: instante UTC de la modificación en el dispositivo. `base_actualizado_en` (opcional): el `actualizado_en_servidor` que tenía la visita cuando el cliente la editó; ausente si la visita es nueva para él.
 - Un campo desconocido en el sobre o en la operación es inválido. El usuario, la cuenta, el rol y el estado nunca se aceptan del cuerpo: salen de la sesión y de la ruta.
 
 | `entidad` | `tipo`      | `datos`                                                                                                                                                                 | Equivale a                                                      |
 | --------- | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| `visita`  | `registrar` | `{ detalles (1 a 4), checklist?, hora_inicio?, hora_fin?, fecha?, razon? }`, igual que [`POST /visitas/realizada`](visitas.md#registrar-la-realización) sin `visita_id` | Crea la visita realizada sin programar, o completa la existente |
+| visita | registrar | detalles, checklist?, hora_inicio?, hora_fin? | Completa una visita preexistente programada y autorizada. |
 | `visita`  | `iniciar`   | `{}` (sin datos)                                                                                                                                                        | `POST /visitas/:visitaId/iniciar`                               |
-| otra      | cualquiera  | No se interpreta ni se envía a la base                                                                                                                                  | Rechazada `ENTIDAD_NO_SOPORTADA` (necesidades: fase 5)          |
+| necesidad | registrar | Cuerpo de creación más envejeciente_id. Se omite base_actualizado_en. | Registra una ocurrencia con el UUID del cliente. |
+| necesidad | cambiar_estado | estado y motivo al cerrar; base_actualizado_en viene del listado o detalle. | Cambia el estado de una necesidad autorizada. |
+| otra | cualquiera | Los datos se omiten. | Rechazada ENTIDAD_NO_SOPORTADA. |
 
-Un `tipo` desconocido de `visita` se rechaza con `TIPO_NO_SOPORTADO`.
+Un tipo desconocido de una entidad soportada se rechaza con TIPO_NO_SOPORTADO.
 
 ### Respuesta
 
@@ -105,14 +107,16 @@ HTTP siempre 200 si el lote se pudo evaluar, aunque todas las operaciones se rec
 | `motivo`                       | Resultado                 | Cuándo                                                                                                                                   | Reintento                               |
 | ------------------------------ | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- |
 | `SUBSCRIPTION_INACTIVE`        | `rechazada`               | La cuenta no tiene prueba o plan vigente (D07). Rechaza todas las operaciones, también las ya resueltas.                                 | Al renovar la cuenta.                   |
+| `PLAN_LIMIT_REACHED`          | `rechazada`               | El expediente quedó fuera del cupo operativo de la cuenta. El resultado corresponde a esa operación del lote.                           | Manual, al recuperar cupo.              |
 | `RELOJ_INVALIDO`               | `rechazada`               | `actualizado_en` o `base_actualizado_en` con más de 5 minutos en el futuro.                                                              | Tras corregir el reloj del dispositivo. |
 | `FORBIDDEN`                    | `rechazada`               | Sin permiso, sin alcance sobre algún adulto, sin participar en la visita, o la visita o el adulto son de otra cuenta. Nunca revela cuál. | No automático; decide el usuario.       |
-| `NOT_FOUND`                    | `rechazada`               | `iniciar` sobre una visita inexistente, ajena o fuera de su alcance (igual que el 404 en línea).                                         | No automático.                          |
+| `NOT_FOUND`                    | `rechazada`               | Visita, expediente u ocurrencia inexistente, de otra cuenta o fuera de alcance. Al registrar una necesidad también se usa si el UUID ya está ocupado. | No automático. |
 | `INVALID_INPUT`                | `rechazada`               | Datos inválidos (forma, textos, checklist, estado general obligatorio, horas…).                                                          | No: hay que corregir la captura.        |
 | `INVALID_STATE`                | `rechazada`               | Fecha futura al registrar o iniciar, o adulto inactivo.                                                                                  | No automático.                          |
 | `VISIT_CLOSED`                 | `rechazada` o `conflicto` | La visita ya está completada o cancelada y no cambió desde la base del cliente (`rechazada`), o cambió (`conflicto`, gana el servidor).  | No.                                     |
+| `NEED_CLOSED`                  | `rechazada` o `conflicto` | La necesidad ya está resuelta o cancelada. Si cambió desde la base del cliente, gana el servidor. | No. |
 | `SERVIDOR_MAS_RECIENTE`        | `conflicto`               | Otra escritura más reciente (o igual) en el servidor; gana el servidor.                                                                  | No: el resultado es definitivo.         |
-| `ENTIDAD_NO_SOPORTADA`         | `rechazada`               | Entidad distinta de `visita` (necesidades llegan en la fase 5).                                                                          | Cuando el servidor la soporte.          |
+| `ENTIDAD_NO_SOPORTADA`         | `rechazada`               | Entidad fuera del contrato vigente.                                                                          | Cuando el servidor la soporte.          |
 | `TIPO_NO_SOPORTADO`            | `rechazada`               | Tipo desconocido para la entidad.                                                                                                        | No.                                     |
 | `ID_CLIENTE_EN_USO`            | `rechazada`               | La clave ya pertenece a otra persona, otra cuenta u otra operación. No revela nada de la fila existente.                                 | No: generar otra clave.                 |
 | `YA_REGISTRADA`, `YA_INICIADA` | `duplicada`               | La misma captura (misma marca de dispositivo) ya se resolvió con otra clave, o la visita ya está en curso.                               | —                                       |
@@ -120,6 +124,8 @@ HTTP siempre 200 si el lote se pudo evaluar, aunque todas las operaciones se rec
 ### GET `/sync/:idCliente`
 
 Para el cliente que perdió la respuesta de un lote. Devuelve el resultado **guardado** de una operación propia (`aplicada`, no `duplicada`), con `entidad`, `tipo` y `procesada_en` además de los campos del resultado. La operación de otra persona, de otra cuenta o inexistente responde el mismo 404; un identificador que no es UUID, 404 sin consultar la base. Como toda lectura operativa, en una cuenta vencida es 403 `SUBSCRIPTION_INACTIVE`.
+
+El cliente puede recuperar un rechazo propio de Necesidades sin versión del servidor, incluso si nunca se creó la ocurrencia. Se exige el permiso vigente para la acción y el rechazo solo devuelve los datos de sincronización. Si hay versión del servidor, también se comprueba el alcance vigente sobre la ocurrencia.
 
 ### Errores HTTP
 
@@ -149,7 +155,7 @@ La RPC `api_sync_aplicar_operacion` evalúa, en este orden y en una sola transac
 
 | Visita en el servidor      | Condición                                                                                         | Resultado                                                                      |
 | -------------------------- | ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| No existe                  | `registrar`                                                                                       | `aplicada`: se crea realizada, sin programar, con el `registro_id` del cliente |
+| No existe                  | `registrar`                                                                                       | `rechazada` / `NOT_FOUND`                                                       |
 | No existe                  | `iniciar`                                                                                         | `rechazada` / `NOT_FOUND`                                                      |
 | Otra cuenta                | —                                                                                                 | `rechazada` / `FORBIDDEN` (`NOT_FOUND` al iniciar)                             |
 | Cualquiera                 | La misma captura (misma `actualizado_en`) ya se resolvió con otra clave                           | `duplicada` / `YA_REGISTRADA` o `YA_INICIADA`                                  |
@@ -168,9 +174,13 @@ Aplicar una operación puede fallar por las reglas de 4a (alcance, datos, fecha 
 ## Permisos
 
 - `sync:usar` es necesario para el endpoint (Coordinador, Cuidador, Voluntario). Sin él: 403.
-- Cada operación vuelve a exigir lo mismo que la API en línea: `visitas:registrar`, alcance sobre **cada** adulto, y ser participante o gestor de la visita. Una captura sin conexión no autoriza a quien perdió el vínculo, la membresía o el rol.
+- La captura de una visita requiere `visitas:registrar`, alcance sobre cada adulto y participación autorizada. La captura de una necesidad requiere `necesidades:registrar` o `necesidades:actualizar`, según la acción, y alcance sobre el adulto. Ambas consultan la membresía vigente.
 - La visita o el adulto de otra cuenta, o fuera del alcance, se tratan igual que uno inexistente y no revelan datos ni la versión del servidor.
-- El Voluntario registra solo la observación (el estado general es opcional para él); lo decide el rol real del servidor, no el cuerpo.
+- El Voluntario registra la observación de una visita autorizada. La API no le concede acceso a Necesidades.
+
+### Necesidades
+
+El alta usa el UUID del cliente y los validadores de la ruta en línea. El reintento con la misma clave es idempotente. Otro intento de alta sobre el mismo UUID se rechaza. Al cambiar estado se aplica LWW sobre la versión completa de la ocurrencia y se conserva la versión del servidor si las marcas empatan. Una necesidad resuelta o cancelada permanece cerrada. Un cierre capturado contra una versión anterior recibe `conflicto`, con `gana: servidor` y motivo `NEED_CLOSED`, si la necesidad ya terminó.
 
 ## Auditoría
 
@@ -185,31 +195,13 @@ Express registra una línea por resultado con la auditoría minimizada (`request
 
 La trazabilidad persistente es la tabla `operacion_sync`.
 
-## Cómo lo usa el cliente aprobado
+## Cola de la aplicación conectada
 
-| Cliente (`OpCola`, `sync.ts`)                    | API                                                                                                                                                                                                                                    |
-| ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `claveCliente`                                   | `id_cliente`                                                                                                                                                                                                                           |
-| `registroId`                                     | `registro_id` (el id de la visita; el cliente lo genera)                                                                                                                                                                               |
-| `entidad: 'visita'`                              | `entidad: 'visita'` (`'necesidad'` se rechaza hasta la fase 5)                                                                                                                                                                         |
-| `tipo: 'crear'`                                  | `tipo: 'registrar'`, sin `base_actualizado_en`                                                                                                                                                                                         |
-| `tipo: 'actualizar'` y estado `en_curso`         | `tipo: 'iniciar'`, con `datos: {}`                                                                                                                                                                                                     |
-| `tipo: 'actualizar'` y estado `completada`       | `tipo: 'registrar'`, con `base_actualizado_en`                                                                                                                                                                                         |
-| `baseActualizadoEn`                              | `base_actualizado_en`: el `actualizado_en_servidor` recibido la última vez; tras un `aplicada` o `conflicto`, se actualiza la base de las operaciones pendientes del mismo registro                                                    |
-| `actualizadoEn`                                  | `actualizado_en` (`new Date().toISOString()`)                                                                                                                                                                                          |
-| `datos` (`Visita`)                               | `detalles`: adulto principal (`adultoId`, `estadoAdulto`, `observaciones`) y cada uno de `detallesAdicionales`; `checklist`; `hora_inicio` y `hora_fin` (de `inicio` y `fin`, `HH:MM` hora de República Dominicana); `fecha`; `razon`  |
-| `usuarioId`                                      | No viaja: sale de la sesión                                                                                                                                                                                                            |
-| Lotes de `TAMANO_LOTE` = 25, en orden de captura | `POST /sync` con ≤ 25 operaciones; se procesan en ese orden                                                                                                                                                                            |
-| `aplicada`, `duplicada`                          | Confirmadas: salen de la cola (`confirmados`, `duplicados`)                                                                                                                                                                            |
-| `conflicto`                                      | Confirmada y avisada (`conflictos`, `gana`)                                                                                                                                                                                            |
-| `rechazada`                                      | Fallida (`fallidos`, `errores`): se queda con su `motivo` y la espera exponencial. `SUBSCRIPTION_INACTIVE` y `RELOJ_INVALIDO` se reintentan al corregirse; el resto detiene la operación hasta que el usuario la descarte o la corrija |
-| Respuesta perdida                                | Reintentar el lote con las mismas claves (devuelve `duplicada`) o consultar `GET /sync/:idCliente`                                                                                                                                     |
+El usuario puede capturar desde la pestaña autenticada. La cola conserva las capturas en memoria, agrupadas por cuenta, y envía hasta 25 por lote al volver la conexión. El usuario puede reintentar o descartar rechazos. Al cambiar de usuario o finalizar la sesión se limpia la cola. Para iniciar un alta sin conexión se requieren los catálogos y expedientes ya consultados. La actualización de estado usa la versión de la ocurrencia que la aplicación tenía en memoria.
 
-Dos ajustes de adaptador que el contrato exige y el frontend actual no hace: `estado_general` es obligatorio por adulto para el Coordinador y el Cuidador y `detallesAdicionales` solo guarda la observación (falta capturar el estado de cada adulto; sin él la operación se rechaza con `INVALID_INPUT`), y la visita nueva del cliente conserva `registro_id` como su `id` para que el reintento no duplique.
+## Persistencia
 
-## Persistencia propuesta
-
-Esquema en [fase-4c-sync.sql](../propuestas/fase-4c-sync.sql); verificación local en `docs/verificacion/local/pruebas-4c-*.sql`. Depende de 2a y de 3b y 4a: `node scripts/validar-propuestas-local.js --solo=3a,3b,4a,4c`.
+La [fase 4c](../propuestas/fase-4c-sync.sql) creó operacion_sync. La [fase 5](../propuestas/fase-5-sync-necesidades.sql) comparte el registro y agrega sync_necesidad. Verificar el conjunto mediante npm run validar:sql -- --solo=fases-5-6 en PostgreSQL local.
 
 - `cuidared.operacion_sync` (nueva, RLS y `revoke` a `public`, `anon` y `authenticated`): `id_cliente` (clave primaria, la clave de idempotencia), `usuario_id`, `cuenta_id`, `entidad`, `tipo`, `registro_id`, `resultado`, `motivo`, `gana`, `actualizado_en_cliente`, `base_actualizado_en`, `actualizado_en_servidor` y `procesada_en`. Restricciones: un rechazo siempre trae motivo; solo un conflicto trae `gana`; nombres en minúsculas y `motivo` en mayúsculas. No guarda el contenido de la operación (observaciones, adultos).
 - RPC de cuenta (`security definer`, `search_path` vacío, solo `authenticated`): `api_sync_aplicar_operacion(p_cuenta_id, p_operacion)` y `api_sync_obtener_operacion(p_cuenta_id, p_id_cliente)`.
@@ -219,7 +211,7 @@ Esquema en [fase-4c-sync.sql](../propuestas/fase-4c-sync.sql); verificación loc
 
 ## Límites conocidos y cambios necesarios fuera del bloque
 
-- **Límite de cuerpo.** `src/app.js` limita el JSON de toda la API a 16 kB. Un lote de 25 visitas con observaciones largas puede superarlo y recibiría 413 completo, de modo que el cliente reintentaría el mismo lote sin éxito. Hace falta un límite mayor (p. ej. 256 kB) solo para `/api/v1/cuentas/:cuentaId/sync`, montando un `express.json({ limit })` para esa ruta **antes** del analizador global. Mientras no exista, el cliente debe reducir el tamaño del lote ante un 413.
+- **Límite de cuerpo.** La ruta `/sync` admite hasta 256 kB. Las demás rutas JSON conservan 16 kB.
 - **Concurrencia.** Los bloqueos asesores y de fila no se pueden ejercitar con una sola sesión de `psql`: las pruebas SQL verifican la lógica secuencial (como 4a). Conviene una prueba con dos sesiones antes de aplicar la migración.
 - **Reintento en la cola del cliente cuando se pierde un permiso o la cuenta vence.** La propuesta conserva la cola del cliente (`rechazada`, reevaluable); qué política seguir con operaciones de quien perdió el acceso de forma definitiva sigue en D16.
 - **Retención.** La de `operacion_sync` es una decisión pendiente (D15).

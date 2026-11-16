@@ -170,3 +170,33 @@ Detalle: [revisión de nombres](catalogos/REVISION-NOMBRES-ONE-2021.md) e [infor
 **Conservación.** Mantener el consentimiento original, la constancia, el expediente y los archivos. Revisar caso por caso cualquier eliminación, incluida la de archivos que quedaron sin registrar tras una subida interrumpida. Las URL privadas emitidas antes de un retiro vencen en un máximo de cinco minutos. Las solicitudes de nuevas URLs vuelven a comprobar permisos. Si hay que corregir un despliegue, preparar una migración que conserve las constancias, series y referencias de archivos que ya se hayan creado.
 
 **Verificación.** El [juego local de cierre](verificacion/local/pruebas-cierre-2-4.sql) pasó en PostgreSQL desechable con Auth y Storage simulados. En Supabase se confirmaron cinco factores, cuatro columnas, seis disparadores y dos políticas de Storage. La tabla nueva tiene RLS y solo se consulta por RPC. Las siete RPC nuevas verificadas exigen autenticación y las RPC públicas siguen revocadas. El bucket es privado y conserva el límite de 5 MiB. El historial remoto registró la huella MD5 `b45f62359b874fd7f833ff984cea3069` sobre las sentencias que conserva Supabase. Queda por verificar el envío de correo y la subida y descarga real de archivos.
+
+## CUIDARED-009 — Necesidades y alertas
+
+**Estado.** Aplicado el 15/11/2026 al proyecto Supabase CuidaRed, con aprobación expresa del usuario. La revisión previa encontró los catálogos de Necesidades vacíos, el tipo `ausencia_visitas` existente y automatismos antiguos para alertas de riesgo, necesidades y visitas.
+
+### Tablas y campos de `cuidared`
+
+| Tabla | Cambios propuestos |
+| --- | --- |
+| `tipo_necesidad` y `necesidad` | Añade `tipo_necesidad.codigo text` único y siembra cinco tipos con su ítem general. Conserva el catálogo previo y comprueba que cada ítem general coincide con su tipo. |
+| `envejeciente_necesidad` | Añade `registrado_por uuid` y `resuelto_por uuid` con referencias a `usuario`. Amplía `cantidad` de `numeric(10,2)` a `numeric` sin escala fija y `unidad_medida` de `varchar(30)` a `varchar(64)`, según la decisión del 15/11/2026. Los registros previos conservan sus valores. Habilita RLS, agrega un índice por expediente y fecha y garantiza que `fecha_actualizacion` avance en cada cambio para comparar versiones al sincronizar. |
+| `necesidad_evento` (nueva) | `necesidad_evento_id uuid` PK, `envejeciente_necesidad_id uuid` FK, `usuario_id uuid` FK, `fecha timestamptz`, `estado_anterior text`, `estado text`, `prioridad_anterior_id smallint` y `prioridad_id smallint` FK, `responsable_anterior_id uuid` y `responsable_id uuid` FK, `motivo text`. RLS e índice por ocurrencia y fecha. |
+| `alerta_envejeciente` | Añade `fuente_riesgo_id bigint`, `fuente_necesidad_id uuid`, `fuente_visita_id uuid` (FK compuesta con adulto), `fuente_perfil_id uuid`, `cierre_automatico boolean` y `sin_fuente_historica boolean`. Agrega RLS, verificación de fuente y restricciones para el cierre. Cuatro índices únicos parciales reemplazan la deduplicación antigua por tipo. |
+| `tipo_alerta` y `notificacion` | Incorpora los códigos de alerta vigentes, conserva el tipo de seguimiento y reutiliza un aviso por destinatario. RLS e índice de bandeja para notificaciones de alerta. |
+
+### Funciones y orden
+
+1. [Fase 5, necesidades](propuestas/fase-5-necesidades.sql). RPC de listado, detalle, historial, candidatos, registro, actualización y estado. `necesidad_registrar_evento` registra las operaciones de la ocurrencia. `trg_envejeciente_necesidad_fecha_actualizacion` usa la función interna `necesidad_fijar_version` para producir versiones distintas incluso cuando coinciden los milisegundos. El cambio de tipos restaura la vista `v_necesidades_activas` con su definición y `security_invoker`, y reinstala el disparador anterior de alertas hasta que el bloque 6b lo sustituye. Se conserva el control de cupos instalado.
+2. [Fase 5, sincronización](propuestas/fase-5-sync-necesidades.sql). Extiende `api_sync_aplicar_operacion` y `api_sync_obtener_operacion`. `sync_necesidad` aplica idempotencia, versión y permisos con los mismos validadores del flujo en línea. Reutiliza `operacion_sync`.
+3. [Fase 6a, consultas](propuestas/fase-6a-alertas-consulta.sql). RPC de listado, detalle, gestión, casos prioritarios y lectura de avisos. Los casos agrupan por adulto y mantienen las fuentes individuales.
+4. [Fase 6b, motor](propuestas/fase-6b-alertas-motor.sql). Reemplaza los disparadores antiguos, revoca acceso a generadores antiguos y agrega comprobación de fuente, generación por riesgo y medicamentos, y avisos internos sin datos de salud. `alertas_evaluar_diario` reconcilia datos existentes y ventanas sin visita.
+5. [Fase 6z, auditoría](propuestas/fase-6z-auditoria-necesidades-alertas.sql). Extiende `api_auditoria_cuenta` a las ocurrencias y a las alertas. Reemplaza `trg_envejeciente_necesidad_auditoria` y `trg_alerta_envejeciente_auditoria` para guardar referencias a las filas y al expediente mediante `trg_auditoria_referencia`. Se conservan las entradas históricas y los disparadores de Backoffice.
+
+### Aplicación y verificación en Supabase
+
+- [Migración `20261115231642`](../supabase/migrations/20261115231642_fases_5_y_6_cuidared_009.sql). Reúne los cinco bloques en una transacción. Se verificaron las cinco categorías cargadas y RLS en `envejeciente_necesidad`, `necesidad_evento`, `alerta_envejeciente` y `notificacion`.
+- [Prueba transaccional](verificacion/fases-5-y-6-supabase.sql). Con datos sintéticos y sesión simulada, comprobó el alta sincronizada y su reintento idempotente, la conservación de `0.004` y una unidad de 64 caracteres, las alertas de riesgo y medicamentos agrupadas por adulto, la lectura del aviso, el cierre automático y la auditoría por referencia. Se revirtieron las filas de prueba y se confirmó que la identidad temporal, su necesidad y sus eventos no quedaron en la base.
+- [Migración `20261115231810`](../supabase/migrations/20261115231810_cron_alertas_cuidared_009.sql). Aplicó por separado la [evaluación inicial y programación diaria](propuestas/operacion-fase-6-cron.sql). La evaluación inicial dejó una alerta y un aviso para datos existentes. El trabajo `cuidared_alertas_diarias` quedó activo con `5 4 * * *` en GMT, a las 00:05 de República Dominicana. Al verificar el despliegue, aún no había ocurrido la primera ejecución programada.
+
+Las pruebas SQL locales se pueden repetir con `npm run validar:sql -- --solo=fases-5-6` en una base desechable. La prueba remota valida las funciones y los datos, y las pruebas manuales del navegador cubren el recorrido con una sesión real.

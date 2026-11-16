@@ -12,6 +12,7 @@ import { AppError } from './lib/errors.js';
 import { createAccessRouter } from './modules/access/access-routes.js';
 import { requireSession } from './modules/access/require-session.js';
 import { createAgendaRouter } from './modules/agenda/agenda-routes.js';
+import { createAlertasRouter } from './modules/alertas/alertas-routes.js';
 import { createCatalogosRouter } from './modules/catalogos/catalogos-routes.js';
 import { createCuentaRouter } from './modules/cuentas/cuenta-routes.js';
 import { createCuentasRouter } from './modules/cuentas/cuentas-routes.js';
@@ -19,6 +20,7 @@ import { requireCuenta } from './modules/cuentas/require-cuenta.js';
 import { createEnvejecientesRouter } from './modules/envejecientes/envejecientes-routes.js';
 import { createMiembrosRouter } from './modules/miembros/miembros-routes.js';
 import { createMisMembresiasRouter } from './modules/miembros/mis-membresias-routes.js';
+import { createNecesidadesRouter } from './modules/necesidades/necesidades-routes.js';
 import { createSeguimientoRouter } from './modules/seguimiento/seguimiento-routes.js';
 import { createSyncRouter } from './modules/sync/sync-routes.js';
 import { createVisitasRouter } from './modules/visitas/visitas-routes.js';
@@ -60,7 +62,7 @@ export function createApp({ env, gateway, audit, adminGateway = null, now = () =
         next(new AppError(429, 'RATE_LIMITED', 'Espera un momento antes de intentar de nuevo.')),
     }),
   );
-  // Un lote de sync (hasta 25 visitas con observaciones) no cabe en 16 kB; solo esa ruta admite más. Si el analizador
+  // Un lote de sync con observaciones y necesidades puede superar 16 kB; solo esa ruta admite más. Si el analizador
   // de la ruta ya leyó el cuerpo, el global no vuelve a leerlo.
   app.use('/api/v1/cuentas/:cuentaId/sync', express.json({ limit: '256kb', strict: true }));
   app.use(express.json({ limit: '16kb', strict: true }));
@@ -84,6 +86,8 @@ export function createApp({ env, gateway, audit, adminGateway = null, now = () =
   enCuenta.use(createSeguimientoRouter(deps));
   enCuenta.use(createVisitasRouter(deps));
   enCuenta.use(createAgendaRouter(deps));
+  enCuenta.use(createNecesidadesRouter(deps));
+  enCuenta.use(createAlertasRouter(deps));
   enCuenta.use(createSyncRouter(deps));
   api.use('/cuentas/:cuentaId', enCuenta);
   app.use('/api/v1', api);
