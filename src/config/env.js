@@ -9,11 +9,13 @@ const schema = z
     SUPABASE_URL: z.url(),
     SUPABASE_PUBLISHABLE_KEY: z.string().startsWith('sb_publishable_'),
     FRONTEND_ORIGINS: z.string().min(1),
+    TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(10).default(0),
+    PWA_ORIGIN: z.url().optional(),
     BROWSER_SESSION_KEY: z
       .string()
       .regex(/^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$/)
       .optional(),
-    // CR-160: opcional; solo habilita invitar miembros nuevos (crear su identidad Auth). Nunca va al frontend.
+    // Backoffice, invitaciones y Web Push. Solo en el servidor.
     SUPABASE_SECRET_KEY: z.string().startsWith('sb_secret_').optional(),
     // Reservado para el borrador de solicitudes externas, que no se publica en esta integración.
     CODIGO_SEGUIMIENTO_SECRETO: z.string().min(32).optional(),
@@ -37,7 +39,7 @@ export function readEnv(input) {
   }
   const env = result.data;
   const origins = env.FRONTEND_ORIGINS.split(',').map((v) => v.trim());
-  for (const value of [env.SUPABASE_URL, ...origins]) {
+  for (const value of [env.SUPABASE_URL, ...origins, ...(env.PWA_ORIGIN ? [env.PWA_ORIGIN] : [])]) {
     const url = new URL(value);
     if (!['https:', 'http:'].includes(url.protocol)) throw new Error('Protocolo de URL inválido.');
     const local = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
@@ -46,7 +48,11 @@ export function readEnv(input) {
     }
     if (url.username || url.password || url.search || url.hash) throw new Error('URL inválida.');
   }
-  if (origins.some((origin) => new URL(origin).origin !== origin)) {
+  if (
+    [...origins, ...(env.PWA_ORIGIN ? [env.PWA_ORIGIN] : [])].some(
+      (origin) => new URL(origin).origin !== origin,
+    )
+  ) {
     throw new Error('FRONTEND_ORIGINS debe contener orígenes exactos sin rutas ni barra final.');
   }
   return { ...env, origins };

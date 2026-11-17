@@ -114,4 +114,14 @@ describe('sesión de navegador', () => {
     const closed = await call('/clear').set('Cookie', cookie).expect(204);
     expect(closed.headers['set-cookie'][0]).toContain('Expires=Thu, 01 Jan 1970');
   });
+
+  it('rechaza la recuperación cuando Backoffice deshabilitó la cuenta', async () => {
+    const { login, call, repository } = setup();
+    const cookie = cookieValue(await login().expect(200));
+    repository.session.mockResolvedValueOnce({ vigente: false, motivo: 'cuenta_deshabilitada' });
+    const denied = await call('/restore').set('Cookie', cookie).expect(403);
+    expect(denied.body.error.code).toBe('ACCOUNT_DISABLED');
+    expect(denied.headers['set-cookie'][0]).toContain('Expires=Thu, 01 Jan 1970');
+    expect(denied.body).not.toHaveProperty('data');
+  });
 });

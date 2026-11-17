@@ -39,7 +39,7 @@ const solo =
     : null;
 const incluido = (codigo) => !solo || solo.some((p) => codigo.startsWith(p));
 const esMigracionPosterior = (nombre) =>
-  /^\d{14}_(?:(?:fases_5_y_6|cron_alertas)_cuidared_009|web_push_cuidared_010|alertas_necesidades_prioritarias_cuidared_011)\.sql$/.test(
+  /^\d{14}_(?:backoffice(?:_tareas)?|(?:fases_5_y_6|cron_alertas)_cuidared_009|web_push_cuidared_010|alertas_necesidades_prioritarias_cuidared_011)\.sql$/.test(
     nombre,
   );
 const esMigracionBase = (nombre) =>
@@ -109,7 +109,8 @@ try {
     join(raiz, 'docs/verificacion/local/trigger-perfil-stub.sql'),
     'trigger de perfil (stub)',
   );
-  // Para 5/6, cargar la base previa a CUIDARED-009 y validar las propuestas una sola vez.
+  // Los grupos existentes validan sus propuestas sobre las fases de la PWA. Backoffice
+  // tiene su propio juego transaccional, que requiere Auth, auditoría y Cron de Supabase.
   for (const f of ordenados(
     join(raiz, 'supabase/migrations'),
     baseDeAlertas

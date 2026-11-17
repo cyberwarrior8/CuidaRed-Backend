@@ -37,6 +37,13 @@ export function createSyncRouter({ audit }) {
       requestId: res.locals.requestId,
       actorId: res.locals.access.identity.id,
     });
+    res.locals.syncEvents = resultados
+      .filter((item) => ['rechazada', 'conflicto'].includes(item.resultado))
+      .map((item) => ({
+        code: item.resultado === 'conflicto' ? 'SYNC_CONFLICT' : 'SYNC_REJECTED',
+        reason: item.motivo,
+        winner: item.gana,
+      }));
     res.json({ data: { resultados } });
   });
 

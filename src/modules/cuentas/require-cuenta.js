@@ -55,6 +55,7 @@ export function requireCuenta() {
     if (!isBigintId(cuentaId)) {
       throw new AppError(404, 'NOT_FOUND', 'Recurso no encontrado.');
     }
+    res.locals.logCuenta = cuentaId;
     const ctx = await res.locals.access.repository.rpc('api_contexto_cuenta', {
       p_cuenta_id: cuentaId,
     });

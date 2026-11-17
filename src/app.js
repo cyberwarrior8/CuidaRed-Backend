@@ -29,13 +29,25 @@ import { createSeguimientoRouter } from './modules/seguimiento/seguimiento-route
 import { createSyncRouter } from './modules/sync/sync-routes.js';
 import { createVisitasRouter } from './modules/visitas/visitas-routes.js';
 import { createWebPushRouter } from './modules/web-push/web-push-routes.js';
+import { createBackofficeRouter } from './modules/backoffice/backoffice-routes.js';
+import { createLoggingMiddleware, createSystemLogger } from './lib/system-logger.js';
+import { auditAccess } from './modules/backoffice/backoffice-audit.js';
 
 export function createApp({ env, gateway, audit, adminGateway = null, now = () => new Date() }) {
-  const deps = { env, gateway, audit, adminGateway, now };
+  const recordLog = createSystemLogger(adminGateway, audit);
+  const deps = {
+    env,
+    gateway,
+    audit,
+    adminGateway,
+    now,
+    recordLog,
+    auditAccess: auditAccess(adminGateway, audit),
+  };
   const app = express();
   app.disable('x-powered-by');
   // No confiar en X-Forwarded-For sin conocer y configurar el proxy de despliegue.
-  app.set('trust proxy', false);
+  app.set('trust proxy', env.TRUST_PROXY_HOPS || false);
   // CR-162: conservar filter[campo] como clave literal y detectar valores repetidos.
   app.set('query parser', 'simple');
   app.use((req, res, next) => {
@@ -44,6 +56,7 @@ export function createApp({ env, gateway, audit, adminGateway = null, now = () =
     res.set('Cache-Control', 'no-store');
     next();
   });
+  app.use(createLoggingMiddleware(recordLog));
   app.use(helmet());
   app.use(
     cors((req, callback) =>
@@ -53,7 +66,7 @@ export function createApp({ env, gateway, audit, adminGateway = null, now = () =
           callback(new AppError(403, 'ORIGIN_DENIED', 'Origen no permitido.'));
         },
         methods: ['GET', 'POST', 'PATCH', 'OPTIONS'],
-        allowedHeaders: ['Authorization', 'Content-Type'],
+        allowedHeaders: ['Authorization', 'Content-Type', 'X-Change-Reason'],
         exposedHeaders: ['X-Request-Id'],
         credentials: req.path.startsWith(`/api/v1${browserSessionPath}/`),
       }),
@@ -74,6 +87,8 @@ export function createApp({ env, gateway, audit, adminGateway = null, now = () =
   app.use('/api/v1/cuentas/:cuentaId/sync', express.json({ limit: '256kb', strict: true }));
   app.use(express.json({ limit: '16kb', strict: true }));
   app.get('/health/live', (_req, res) => res.json({ status: 'ok' }));
+  // Módulo Backoffice exclusivo para administración interna de plataforma (BO-01, BO-02)
+  app.use(['/api/admin', '/api/v1/backoffice'], createBackofficeRouter(deps));
   const api = express.Router();
   // El flujo externo queda aislado hasta aprobar sus controles de seguridad.
   api.use('/publico', (_req, _res, next) =>
@@ -110,12 +125,17 @@ export function createApp({ env, gateway, audit, adminGateway = null, now = () =
     const known = error instanceof AppError;
     const status = known ? error.status : 500;
     const code = known ? error.code : 'INTERNAL_ERROR';
+    res.locals.errorCode = code;
+    if (!known) res.locals.unexpectedError = error;
     audit({
       requestId: res.locals.requestId,
       actorId: res.locals.actorId,
       action: 'api.request',
       result: status < 500 ? 'denied' : 'error',
       code,
+      dependency: error.dependency,
+      upstreamStatus: error.upstreamStatus,
+      upstreamCode: error.upstreamCode,
     });
     res.status(status).json({
       error: { code, message: known ? error.message : 'No se pudo completar la operación.' },

@@ -1,5 +1,10 @@
 # Cambios actuales
 
+## 17/11/2026 — Integración de Backoffice con las fases 5 y 6
+
+- La aplicación monta Backoffice, la sesión de navegador y Web Push. La recuperación de sesión también respeta el bloqueo de cuentas del Backoffice.
+- La comprobación en PostgreSQL desechable reprodujo un conflicto del mantenimiento antiguo con las alertas que exigen fuente. La [propuesta de compatibilidad](docs/propuestas/backoffice-alertas-compatibilidad.sql) queda pendiente de aprobación para Supabase.
+
 ## 17/11/2026 — Sesión al reabrir CuidaRed
 
 - `src/modules/access/` recupera sesiones vigentes desde una cookie cifrada de acceso restringido. Cada recuperación revalida la sesión en Supabase y conserva el vencimiento máximo original de la aplicación.
@@ -230,3 +235,19 @@ Se completaron las comprobaciones descritas arriba y se solicitó aprobación ex
 - `docs/VERIFICACION-FASE-1-SUPABASE.md`, guías, plan y contexto reflejan el estado aplicado, los 15 avisos previos y las dos observaciones informativas de RLS sin políticas deliberadas en tablas privadas.
 
 **Pendiente:** configuración Auth y recorridos con usuarios reales, incluidas pruebas positivas de sesión/perfil, revocación, límites y aislamiento. La fase 1 no está cerrada. No se realizaron commits Git ni cambios a plantillas, SMTP, OTP, contraseñas o usuarios Auth.
+
+## 14/11/2026 · Backoffice de CuidaRed
+
+- `src/modules/backoffice/`, `src/lib/system-logger.js`, `src/lib/supabase-admin.js` y `src/app.js` conectan los módulos de administración en `/api/admin` con persistencia, autorización, trazas sanitizadas y eventos HTTP.
+- `src/modules/access/`, `src/modules/cuentas/require-cuenta.js` y `src/modules/sync/sync-routes.js` propagan la revocación y los rechazos de sincronización a la PWA y al visor técnico.
+- Las migraciones `20261114133700_backoffice.sql` y `20261114133759_backoffice_tareas.sql` quedaron aplicadas en Supabase CuidaRed con autorización. El script de catálogo agregó cuatro planes referenciales de V2 y tres métodos. La tarea diaria quedó activa y su ejecución manual se comprobó dentro de una transacción revertida.
+- `../CuidaRed-Backoffice/iniciar.mjs` y `npm start` arrancan las tres aplicaciones. La configuración de acceso y la trazabilidad BO-01 a BO-34 están en `../CuidaRed-Backoffice/README.md`.
+- Con la clave dedicada de Express se verificaron contra Supabase CuidaRed el ingreso de los tres operadores de prueba, la negación de permisos, el TOTP del superadministrador y los logs de Express y PWA por SSE. El factor temporal se retiró para que el usuario pueda inscribir su autenticador.
+- Tras el 503 de `GET /api/admin/me`, el cliente administrativo de Supabase reintenta una vez la validación de sesión ante fallos transitorios. El formulario del backoffice permite retomar la verificación conservando la sesión. Verificado con pruebas de timeout y una prueba en Edge que simula un 503 y llega al QR de Supabase.
+
+### 14/11/2026 · Disponibilidad y filtros del Backoffice
+
+- La revisión de Supabase encontró timeouts en PostgREST durante los errores reportados. La comparación por `request_id` confirmó que se persistió el desafío de MFA y que varios eventos asociados a los 503 quedaron registrados, mientras otros identificadores no aparecieron en `log_sistema`.
+- `src/lib/supabase-admin.js` limita a un reintento las lecturas ante fallos transitorios y las escrituras de log solo se reintentan ante un rechazo explícito de la ejecución. El sondeo de eventos espera progresivamente más si falla y la apertura de la conexión SSE emite un solo aviso de conexión inicial.
+- `src/lib/system-logger.js` y `src/modules/access/supabase-gateway.js` conservan el servicio y los códigos sanitizados del proveedor en el diagnóstico de errores. El Backoffice reduce la concurrencia de la serie mensual y el ritmo de reconexión si se interrumpe el flujo en vivo.
+- Verificación: 1080 pruebas de backend aprobadas. El flujo de Soporte con Supabase pasó en Edge, incluidos resumen, conexión en vivo, cuentas y filtros de logs. Una consulta por el identificador de la solicitud de ingreso confirmó un solo registro persistido con HTTP 200.

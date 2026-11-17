@@ -10,6 +10,9 @@ export function createAuditSink(write = (line) => process.stdout.write(`${line}\
         action: event.action,
         result: event.result,
         code: event.code,
+        dependency: event.dependency,
+        upstreamStatus: event.upstreamStatus,
+        upstreamCode: event.upstreamCode,
       }),
     );
   };
