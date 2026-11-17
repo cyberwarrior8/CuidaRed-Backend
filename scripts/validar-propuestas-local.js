@@ -1,6 +1,6 @@
 /* Valida las propuestas SQL en un PostgreSQL LOCAL desechable · herramientas. © 2026 Equipo CuidaRed – INTEC. */
 /*
- * Uso: node scripts/validar-propuestas-local.js [--conservar] [--solo=2b,3a|--solo=integracion|--solo=cierre|--solo=fases-5-6]
+ * Uso: node scripts/validar-propuestas-local.js [--conservar] [--solo=2b,3a|--solo=integracion|--solo=cierre|--solo=fases-5-6|--solo=web-push]
  * Requiere `psql` en el PATH y un PostgreSQL local accesible con las variables estándar (PGHOST, PGUSER,
  * PGPASSWORD…; por defecto localhost/postgres). Crea la base `cuidared_validacion_local`, carga en orden:
  *   1. docs/verificacion/local/supabase-stub.sql  (esquema auth y roles simulados)
@@ -30,27 +30,34 @@ const conservar = process.argv.includes('--conservar');
 const soloArg = process.argv.find((a) => a.startsWith('--solo='));
 const soloCierre = soloArg === '--solo=cierre';
 const fasesCincoSeis = soloArg === '--solo=fases-5-6';
+const webPush = soloArg === '--solo=web-push';
+const baseDeAlertas = fasesCincoSeis || webPush;
 const soloIntegracion = !soloArg || soloArg === '--solo=integracion';
 const solo =
-  soloArg && !soloIntegracion && !soloCierre && !fasesCincoSeis
+  soloArg && !soloIntegracion && !soloCierre && !baseDeAlertas
     ? ['2a', '00', ...soloArg.slice(7).split(',').filter(Boolean)]
     : null;
 const incluido = (codigo) => !solo || solo.some((p) => codigo.startsWith(p));
-const esMigracionFasesCincoSeis = (nombre) =>
-  /^\d{14}_(?:fases_5_y_6|cron_alertas)_cuidared_009\.sql$/.test(nombre);
+const esMigracionPosterior = (nombre) =>
+  /^\d{14}_(?:(?:fases_5_y_6|cron_alertas)_cuidared_009|web_push_cuidared_010|alertas_necesidades_prioritarias_cuidared_011)\.sql$/.test(
+    nombre,
+  );
 const esMigracionBase = (nombre) =>
   nombre.endsWith('.sql') &&
-  !esMigracionFasesCincoSeis(nombre) &&
+  !esMigracionPosterior(nombre) &&
   !/^\d{14}_(?:fase_(2[abc]|3[ab]|4[abcd])_|cierre_fases_2_a_4_)/.test(nombre);
 const esPruebaSeleccionada = (n) =>
   /^pruebas-.*\.sql$/.test(n) &&
-  (fasesCincoSeis
-    ? /^(?:pruebas-00-ayudas|pruebas-fase-5|pruebas-[56][a-z]?-.*)\.sql$/.test(n)
-    : soloCierre
-      ? ['pruebas-00-ayudas.sql', 'pruebas-cierre-2-4.sql'].includes(n)
-      : soloIntegracion
-        ? ['pruebas-00-ayudas.sql', 'pruebas-integracion-2-4.sql'].includes(n)
-        : incluido(n.slice(8)));
+  (n === 'pruebas-00-ayudas.sql' ||
+    (webPush
+      ? ['pruebas-web-push.sql', 'pruebas-web-push-entregas.sql'].includes(n)
+      : fasesCincoSeis
+        ? /^(?:pruebas-fase-5|pruebas-[56][a-z]?-.*)\.sql$/.test(n)
+        : soloCierre
+          ? n === 'pruebas-cierre-2-4.sql'
+          : soloIntegracion
+            ? n === 'pruebas-integracion-2-4.sql'
+            : incluido(n.slice(8))));
 const env = { ...process.env, PGHOST: host, PGUSER: process.env.PGUSER ?? 'postgres' };
 // Evita que libpq priorice una dirección o un servicio remoto sobre PGHOST.
 delete env.PGHOSTADDR;
@@ -105,8 +112,8 @@ try {
   // Para 5/6, cargar la base previa a CUIDARED-009 y validar las propuestas una sola vez.
   for (const f of ordenados(
     join(raiz, 'supabase/migrations'),
-    fasesCincoSeis
-      ? (nombre) => nombre.endsWith('.sql') && !esMigracionFasesCincoSeis(nombre)
+    baseDeAlertas
+      ? (nombre) => nombre.endsWith('.sql') && !esMigracionPosterior(nombre)
       : esMigracionBase,
   ))
     ejecutarArchivo(f, f.slice(raiz.length));
@@ -116,18 +123,25 @@ try {
       'datos previos de integración',
     );
   }
-  if (fasesCincoSeis) {
+  if (baseDeAlertas) {
     ejecutarArchivo(
       join(raiz, 'docs/verificacion/local/datos-previos-fases-5-6.sql'),
       'metadatos previos de Supabase para las fases 5 y 6',
     );
   }
   for (const f of ordenados(join(raiz, 'docs/propuestas'), (n) =>
-    fasesCincoSeis
+    baseDeAlertas
       ? /^fase-[56][a-z]?-.*\.sql$/.test(n)
       : /^fase-(2[abc]|3[ab]|4[abcd])-.*\.sql$/.test(n) && incluido(n.slice(5)),
   )) {
     ejecutarArchivo(f, f.slice(raiz.length));
+  }
+  if (webPush) {
+    ejecutarArchivo(
+      join(raiz, 'docs/propuestas/web-push-suscripciones.sql'),
+      'suscripciones Web Push',
+    );
+    ejecutarArchivo(join(raiz, 'docs/propuestas/web-push-entregas.sql'), 'entregas Web Push');
   }
   if (soloCierre) {
     for (const bloque of [

@@ -1,5 +1,30 @@
 # Cambios actuales
 
+## 17/11/2026 — Sesión al reabrir CuidaRed
+
+- `src/modules/access/` recupera sesiones vigentes desde una cookie cifrada de acceso restringido. Cada recuperación revalida la sesión en Supabase y conserva el vencimiento máximo original de la aplicación.
+- [Rutas y configuración](docs/FASE-1-PERFIL-Y-ACCESO.md#recuperación-en-el-mismo-navegador).
+
+## 17/11/2026 — Alertas por necesidades prioritarias
+
+- CUIDARED-011 se aplicó en Supabase como migración `20261117044316`. Agrega alertas por necesidades pendientes de prioridad alta, con cierre automático y avisos a gestores. La evaluación inicial generó una alerta de Transporte y un aviso al administrador autorizado. Los medicamentos pendientes conservan su alerta específica.
+- [Registro de esquema y validación](docs/CAMBIOS-SCHEMA-CUIDARED.md#cuidared-011--alertas-por-necesidades-prioritarias).
+
+## 17/11/2026 — Configuración local del emisor Web Push
+
+- El entorno local utiliza el contacto VAPID del piloto y una pareja de claves guardada en su configuración privada. El [contrato](docs/contratos/web-push.md#prueba-en-la-misma-computadora) incluye la prueba con frontend y API en `localhost`.
+
+## 16/11/2026 — Envío Web Push y migración CUIDARED-010
+
+- El motor encola avisos nuevos por dispositivo y el emisor `npm run web-push:worker` cifra, entrega y reintenta. Se vuelve a comprobar el acceso antes de reservar la entrega.
+- Supabase recibió la migración `20261116043610`. Pasaron la prueba transaccional remota sin envíos externos y las pruebas SQL locales de reservas, revocación e inactividad. El emisor queda apagado hasta configurar el contacto VAPID.
+
+## 16/11/2026 — Inicio de Web Push
+
+- Se agregó el contrato para activar o revocar avisos por navegador y la propuesta de persistencia de suscripciones. Ver [CUIDARED-010](docs/CAMBIOS-SCHEMA-CUIDARED.md#cuidared-010--suscripciones-web-push).
+- Las pruebas HTTP comprueban sesión, validación y revocación. En PostgreSQL local se verificaron la propiedad de la suscripción, su revocación idempotente y la ausencia de acceso directo.
+- La función viene desactivada. El envío en segundo plano y la aplicación de la propuesta en Supabase quedan pendientes.
+
 ## 15/11/2026 — Fases 5 y 6 aplicadas en Supabase
 
 - Las migraciones `20261115231642` y `20261115231810` registran el esquema de Necesidades y Alertas y el trabajo diario. Ver [CUIDARED-009](docs/CAMBIOS-SCHEMA-CUIDARED.md#cuidared-009--necesidades-y-alertas).

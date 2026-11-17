@@ -67,6 +67,23 @@ export function createSupabaseGateway(env, fetchImpl = globalThis.fetch) {
 
   return {
     publico: () => ({ rpc: publicRpc }),
+    async refreshBrowserSession(refreshToken) {
+      // Cada intercambio utiliza un cliente nuevo y evita compartir credenciales entre peticiones.
+      const client = createClient(env.SUPABASE_URL, env.SUPABASE_PUBLISHABLE_KEY, options);
+      const { data, error } = await client.auth.refreshSession({ refresh_token: refreshToken });
+      if (error) {
+        if (
+          error.status >= 500 ||
+          error.status === 429 ||
+          error.name === 'AuthRetryableFetchError'
+        ) {
+          throw unavailable();
+        }
+        throw expired();
+      }
+      if (!data.session?.access_token || !data.session.refresh_token) throw unavailable();
+      return data.session;
+    },
     async authenticate(token) {
       const { data, error } = await authClient.auth.getUser(token);
       if (error) {

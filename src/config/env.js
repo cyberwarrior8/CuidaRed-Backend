@@ -1,17 +1,31 @@
 /* Configuración validada al iniciar · infraestructura. © 2026 Equipo CuidaRed – INTEC. */
 import { z } from 'zod';
+import { esClavePublicaPush } from '../lib/web-push-validation.js';
 
-const schema = z.object({
-  NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
-  PORT: z.coerce.number().int().min(1).max(65535).default(3000),
-  SUPABASE_URL: z.url(),
-  SUPABASE_PUBLISHABLE_KEY: z.string().startsWith('sb_publishable_'),
-  FRONTEND_ORIGINS: z.string().min(1),
-  // CR-160: opcional; solo habilita invitar miembros nuevos (crear su identidad Auth). Nunca va al frontend.
-  SUPABASE_SECRET_KEY: z.string().startsWith('sb_secret_').optional(),
-  // Reservado para el borrador de solicitudes externas, que no se publica en esta integración.
-  CODIGO_SEGUIMIENTO_SECRETO: z.string().min(32).optional(),
-});
+const schema = z
+  .object({
+    NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+    PORT: z.coerce.number().int().min(1).max(65535).default(3000),
+    SUPABASE_URL: z.url(),
+    SUPABASE_PUBLISHABLE_KEY: z.string().startsWith('sb_publishable_'),
+    FRONTEND_ORIGINS: z.string().min(1),
+    BROWSER_SESSION_KEY: z
+      .string()
+      .regex(/^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$/)
+      .optional(),
+    // CR-160: opcional; solo habilita invitar miembros nuevos (crear su identidad Auth). Nunca va al frontend.
+    SUPABASE_SECRET_KEY: z.string().startsWith('sb_secret_').optional(),
+    // Reservado para el borrador de solicitudes externas, que no se publica en esta integración.
+    CODIGO_SEGUIMIENTO_SECRETO: z.string().min(32).optional(),
+    WEB_PUSH_ENABLED: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((valor) => valor === 'true'),
+    WEB_PUSH_PUBLIC_KEY: z.string().refine(esClavePublicaPush).optional(),
+  })
+  .refine((env) => !env.WEB_PUSH_ENABLED || !!env.WEB_PUSH_PUBLIC_KEY, {
+    path: ['WEB_PUSH_PUBLIC_KEY'],
+  });
 
 export function readEnv(input) {
   const result = schema.safeParse(input);

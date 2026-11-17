@@ -200,3 +200,30 @@ Detalle: [revisión de nombres](catalogos/REVISION-NOMBRES-ONE-2021.md) e [infor
 - [Migración `20261115231810`](../supabase/migrations/20261115231810_cron_alertas_cuidared_009.sql). Aplicó por separado la [evaluación inicial y programación diaria](propuestas/operacion-fase-6-cron.sql). La evaluación inicial dejó una alerta y un aviso para datos existentes. El trabajo `cuidared_alertas_diarias` quedó activo con `5 4 * * *` en GMT, a las 00:05 de República Dominicana. Al verificar el despliegue, aún no había ocurrido la primera ejecución programada.
 
 Las pruebas SQL locales se pueden repetir con `npm run validar:sql -- --solo=fases-5-6` en una base desechable. La prueba remota valida las funciones y los datos, y las pruebas manuales del navegador cubren el recorrido con una sesión real.
+
+## CUIDARED-010 — Suscripciones Web Push
+
+**Estado.** Aplicado el 16/11/2026 con autorización del usuario. Registro de dispositivos y cola de entregas Web Push.
+
+- La tabla nueva `cuidared.push_suscripcion` guarda `endpoint text`, `endpoint_hash bytea` generado y usado como PK, `usuario_id uuid` con FK a `usuario`, `sesion_id uuid`, `p256dh text`, `auth text`, `creada_en timestamptz` y `actualizada_en timestamptz`. Usa índices por usuario y sesión, RLS y acceso mediado por la API. El cierre manual elimina el registro mediante un disparador en `sesion_acceso`.
+- La tabla nueva `cuidared.push_entrega` guarda `entrega_id uuid` como PK, `notificacion_id uuid` y `endpoint_hash bytea` como FKs, `estado text`, `intentos smallint`, `reserva_id uuid`, `version_suscripcion timestamptz`, `disponible_en timestamptz`, `creada_en timestamptz` y `terminada_en timestamptz`. Usa RLS, una restricción única por aviso y dispositivo, y un índice de pendientes.
+- `cuidared_interno.push_endpoint_valido` comprueba el formato y los proveedores admitidos. Las funciones `cuidared_api.api_push_registrar_suscripcion`, `api_push_estado_suscripcion` y `api_push_revocar_suscripcion` exigen la sesión vigente y limitan las operaciones a la persona autenticada.
+- El disparador en `notificacion` encola entregas de alertas nuevas. `cuidared_interno.push_aviso_elegible` revalida permisos y vigencia del aviso. `cuidared_api.api_push_reservar_entregas` y `api_push_finalizar_entrega` están reservadas a `service_role`.
+- [SQL de suscripciones](propuestas/web-push-suscripciones.sql), [SQL de entregas](propuestas/web-push-entregas.sql) y [prueba local del motor](verificacion/local/pruebas-web-push-entregas.sql).
+- [Migración `20261116043610`](../supabase/migrations/20261116043610_web_push_cuidared_010.sql). La [prueba transaccional en Supabase](verificacion/web-push-supabase.sql) comprobó que una alerta genera una reserva única, su finalización y la revocación al cerrar sesión. Los datos de prueba se revirtieron, la revisión diaria de alertas sigue activa y ambas tablas tienen RLS. El emisor queda apagado mientras está pendiente el contacto VAPID.
+
+## CUIDARED-011 — Alertas por necesidades prioritarias
+
+**Estado.** Aplicado el 17/11/2026 en Supabase CuidaRed con aprobación del usuario. [Propuesta SQL](propuestas/fase-6c-alertas-necesidades-prioritarias.sql) y [migración `20261117044316`](../supabase/migrations/20261117044316_alertas_necesidades_prioritarias_cuidared_011.sql).
+
+| Objeto | Cambio |
+| --- | --- |
+| `cuidared.tipo_alerta` | Agrega el registro `necesidad_prioritaria` («Necesidad prioritaria»). |
+| `cuidared.envejeciente_necesidad` | Agrega el disparador `alertas_necesidad_prioritaria` para altas y cambios de estado, catálogo o prioridad. |
+| `cuidared_interno` | Actualiza `alerta_es_prioritaria`, `trg_alerta_fuente_consistente`, `alertas_fuentes_vigentes` y `alertas_reconciliar_adulto`. Reutiliza la fuente de necesidad y su índice único. |
+
+La evaluación inicial busca ocurrencias pendientes de prioridad alta en expedientes activos con consentimiento vigente y acceso operativo. Cada alerta se agrupa por adulto y usa los permisos y preferencias existentes para avisos internos y Web Push. Los medicamentos pendientes siguen su regla RF-04 con su tipo propio. El cambio usa las tablas, columnas, rutas y permisos existentes.
+
+**Verificación local.** La [regresión SQL](verificacion/local/pruebas-6c-necesidades-prioritarias.sql) verificó alta y cambio de prioridad, agrupación, filtro por tipo, destinatarios, cierre automático y deduplicación. La evaluación inicial creó una alerta y un aviso para una necesidad sintética preexistente. La [prueba Web Push](verificacion/local/pruebas-web-push-entregas.sql) verificó que una alerta de Transporte encola una entrega para el Coordinador de Familia. Las pruebas usaron PostgreSQL desechable con Supabase simulado.
+
+**Verificación en Supabase.** El disparador está activo. La evaluación inicial creó una alerta pendiente para la única necesidad de Transporte elegible, un aviso interno para el administrador autorizado y una entrega Web Push. El emisor registró esa entrega como enviada.

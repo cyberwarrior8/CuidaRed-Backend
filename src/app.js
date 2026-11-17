@@ -10,6 +10,10 @@ import cors from 'cors';
 import { rateLimit } from 'express-rate-limit';
 import { AppError } from './lib/errors.js';
 import { createAccessRouter } from './modules/access/access-routes.js';
+import {
+  browserSessionPath,
+  createBrowserSessionRouter,
+} from './modules/access/browser-session.js';
 import { requireSession } from './modules/access/require-session.js';
 import { createAgendaRouter } from './modules/agenda/agenda-routes.js';
 import { createAlertasRouter } from './modules/alertas/alertas-routes.js';
@@ -24,6 +28,7 @@ import { createNecesidadesRouter } from './modules/necesidades/necesidades-route
 import { createSeguimientoRouter } from './modules/seguimiento/seguimiento-routes.js';
 import { createSyncRouter } from './modules/sync/sync-routes.js';
 import { createVisitasRouter } from './modules/visitas/visitas-routes.js';
+import { createWebPushRouter } from './modules/web-push/web-push-routes.js';
 
 export function createApp({ env, gateway, audit, adminGateway = null, now = () => new Date() }) {
   const deps = { env, gateway, audit, adminGateway, now };
@@ -41,16 +46,18 @@ export function createApp({ env, gateway, audit, adminGateway = null, now = () =
   });
   app.use(helmet());
   app.use(
-    cors({
-      origin(origin, callback) {
-        if (!origin || env.origins.includes(origin)) return callback(null, true);
-        callback(new AppError(403, 'ORIGIN_DENIED', 'Origen no permitido.'));
-      },
-      methods: ['GET', 'POST', 'PATCH', 'OPTIONS'],
-      allowedHeaders: ['Authorization', 'Content-Type'],
-      exposedHeaders: ['X-Request-Id'],
-      credentials: false,
-    }),
+    cors((req, callback) =>
+      callback(null, {
+        origin(origin, callback) {
+          if (!origin || env.origins.includes(origin)) return callback(null, true);
+          callback(new AppError(403, 'ORIGIN_DENIED', 'Origen no permitido.'));
+        },
+        methods: ['GET', 'POST', 'PATCH', 'OPTIONS'],
+        allowedHeaders: ['Authorization', 'Content-Type'],
+        exposedHeaders: ['X-Request-Id'],
+        credentials: req.path.startsWith(`/api/v1${browserSessionPath}/`),
+      }),
+    ),
   );
   app.use(
     rateLimit({
@@ -72,11 +79,13 @@ export function createApp({ env, gateway, audit, adminGateway = null, now = () =
   api.use('/publico', (_req, _res, next) =>
     next(new AppError(404, 'NOT_FOUND', 'Recurso no encontrado.')),
   );
+  api.use(browserSessionPath, createBrowserSessionRouter(deps));
   api.use(requireSession(gateway));
   api.use(createAccessRouter(deps));
   api.use(createCatalogosRouter(deps));
   api.use(createCuentasRouter(deps));
   api.use(createMisMembresiasRouter(deps));
+  api.use('/notificaciones-push', createWebPushRouter(deps));
   // Rutas de una cuenta: el contexto (rol, permisos, vigencia) se resuelve una vez y lo usan todos los módulos.
   const enCuenta = express.Router({ mergeParams: true });
   enCuenta.use(requireCuenta());

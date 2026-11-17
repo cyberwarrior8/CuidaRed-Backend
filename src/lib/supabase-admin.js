@@ -2,21 +2,22 @@
 import { createClient } from '@supabase/supabase-js';
 import { AppError, unavailable } from './errors.js';
 
-/*
- * Único punto con la clave secreta. Solo se crea si SUPABASE_SECRET_KEY está configurada y expone una lista
- * cerrada de operaciones de Auth para crear o reenviar invitaciones.
- * Nunca lee ni escribe tablas de negocio: la membresía la crea una RPC con el JWT de quien invita, que es la que
- * autoriza. La clave no se registra, no se devuelve y no llega al frontend.
- */
-export function createAdminGateway(env, fetchImpl = globalThis.fetch) {
+// Cliente privado para procesos del sistema. Cada gateway expone sus propias operaciones permitidas.
+export function createSystemClient(env, fetchImpl = globalThis.fetch) {
   if (!env.SUPABASE_SECRET_KEY) return null;
-  const admin = createClient(env.SUPABASE_URL, env.SUPABASE_SECRET_KEY, {
+  return createClient(env.SUPABASE_URL, env.SUPABASE_SECRET_KEY, {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
     global: {
       fetch: (input, init = {}) =>
         fetchImpl(input, { ...init, signal: init.signal ?? AbortSignal.timeout(10_000) }),
     },
   });
+}
+
+// Las invitaciones usan Auth y las escrituras de negocio usan el JWT de quien invita.
+export function createAdminGateway(env, fetchImpl = globalThis.fetch) {
+  const admin = createSystemClient(env, fetchImpl);
+  if (!admin) return null;
   return {
     async resendInvitation({ id, email }) {
       const { data, error } = await admin.auth.admin.getUserById(id);
