@@ -1,4 +1,4 @@
-/* Persistencia de la sincronización de visitas mediante RPC · RF-10, RNF-4.2. © 2026 Equipo CuidaRed – INTEC. */
+/* Persistencia de la sincronización de visitas y necesidades mediante RPC · RF-10, RNF-4.2. © 2026 Equipo CuidaRed – INTEC. */
 import { unavailable } from '../../lib/errors.js';
 import { RESULTADOS } from './sync-schemas.js';
 

@@ -7,20 +7,34 @@ import { AppError, unavailable } from './errors.js';
 const transientStatuses = new Set([0, 502, 503, 504, 520, 521, 522, 523, 524]);
 const transientCodes = new Set(['57014', '55P03', 'PGRST003']);
 
-export function createAdminGateway(env, fetchImpl = globalThis.fetch) {
-  if (!env.SUPABASE_SECRET_KEY) return null;
-  const options = {
+function systemOptions(fetchImpl) {
+  return {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
     global: {
       fetch: (input, init = {}) =>
-        fetchImpl(input, { ...init, signal: init.signal ?? AbortSignal.timeout(10000) }),
+        fetchImpl(input, { ...init, signal: init.signal ?? AbortSignal.timeout(10_000) }),
     },
   };
-  const admin = createClient(env.SUPABASE_URL, env.SUPABASE_SECRET_KEY, {
-    ...options,
+}
+
+// Cliente privado para procesos del sistema. Cada gateway expone sus operaciones permitidas.
+export function createSystemClient(env, fetchImpl = globalThis.fetch) {
+  if (!env.SUPABASE_SECRET_KEY) return null;
+  return createClient(env.SUPABASE_URL, env.SUPABASE_SECRET_KEY, {
+    ...systemOptions(fetchImpl),
     db: { schema: 'cuidared_api' },
   });
-  const publicAuth = createClient(env.SUPABASE_URL, env.SUPABASE_PUBLISHABLE_KEY, options).auth;
+}
+
+// Las invitaciones usan Auth y las escrituras de negocio usan el JWT de quien invita.
+export function createAdminGateway(env, fetchImpl = globalThis.fetch) {
+  const admin = createSystemClient(env, fetchImpl);
+  if (!admin) return null;
+  const publicAuth = createClient(
+    env.SUPABASE_URL,
+    env.SUPABASE_PUBLISHABLE_KEY,
+    systemOptions(fetchImpl),
+  ).auth;
   const backofficeRpc = async (name, args) => {
     if (!/^[a-z_]+$/.test(name)) throw new Error('RPC administrativa inválida.');
     const validatingSession = name === 'sesion' && args?.p_accion === 'validar';
@@ -88,6 +102,28 @@ export function createAdminGateway(env, fetchImpl = globalThis.fetch) {
   }
 
   return {
+    async resendInvitation({ id, email }) {
+      const { data, error } = await admin.auth.admin.getUserById(id);
+      if (error || !data.user) throw unavailable();
+      if (data.user.email?.toLowerCase() !== email.toLowerCase()) throw unavailable();
+      if (data.user.email_confirmed_at) return 'perfil_activo';
+      if (!data.user.invited_at) {
+        throw new AppError(
+          409,
+          'INVITATION_CONFIRM_SIGNUP',
+          'La persona debe confirmar su registro.',
+        );
+      }
+      const { error: invitationError } = await admin.auth.admin.inviteUserByEmail(email);
+      if (invitationError?.status === 429) {
+        throw new AppError(429, 'RATE_LIMITED', 'Espera un momento antes de intentar de nuevo.');
+      }
+      if (invitationError) throw unavailable();
+      return 'enviada';
+    },
+    /**
+     * Crea la identidad invitada con los datos exigidos por el perfil y devuelve su id.
+     */
     async inviteUser({ email, cedula, nombres, apellidos }) {
       const { data, error } = await admin.auth.admin.inviteUserByEmail(email, {
         data: { cedula, nombres, apellidos },

@@ -7,6 +7,11 @@ import { registerBusinessErrors } from '../../lib/business-errors.js';
  * src/lib/business-errors.js y también los usan las RPC de visitas.
  */
 export const VISITAS_ERRORES = {
+  CR_SERIE_VISITA_INVALIDA: {
+    status: 422,
+    publicCode: 'INVALID_VISIT_SERIES',
+    message: 'Revisa la frecuencia, los días y la fecha de fin. El máximo es de 60 visitas.',
+  },
   CR_VISITA_CERRADA: {
     status: 409,
     publicCode: 'VISIT_CLOSED',

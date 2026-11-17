@@ -28,3 +28,18 @@ export async function invitarMiembro({ repository, adminGateway }, cuentaId, inp
   const miembro = await repository.agregarMiembro(cuentaId, { correo, cedula, rol });
   return { miembro, usuarioExistente: usuarioExiste };
 }
+
+export async function reenviarInvitacion({ repository, adminGateway }, cuentaId, membresiaId) {
+  const miembro = await repository.detalle(cuentaId, membresiaId);
+  if (miembro.estado !== 'pendiente') {
+    throw new AppError(409, 'INVALID_STATE', 'La membresía ya no tiene una invitación pendiente.');
+  }
+  if (!adminGateway) {
+    throw new AppError(
+      503,
+      'INVITATIONS_UNAVAILABLE',
+      'El envío de invitaciones no está disponible.',
+    );
+  }
+  return adminGateway.resendInvitation({ id: miembro.usuario.id, email: miembro.usuario.correo });
+}

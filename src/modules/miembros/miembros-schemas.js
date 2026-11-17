@@ -21,6 +21,7 @@ export const titularidadSchema = z.strictObject({ membresia_id: jsonBigintId });
 export const cuidadorSchema = z.strictObject({
   tipo_cuidado_id: z.int().min(1).max(32767),
   cuidador_independiente: z.boolean(),
+  conservar_empleador: z.boolean().optional(),
 });
 
 // Listado: una fila por persona; orden y filtros de lista cerrada (CR-162).

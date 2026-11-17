@@ -238,7 +238,7 @@ El frontend admite registrar directamente una visita ya realizada sin programaci
 
 Separar el catálogo del hecho «este adulto presenta esta necesidad». Cada nueva aparición debe crear una ocurrencia identificable; no sobrescribir una anterior del mismo tipo. Una ocurrencia conserva prioridad, estado, fecha, cantidad/unidad cuando aplique, responsable, posible indicación médica y datos de resolución. [S01 RF-03, S03, S04]
 
-Se inicia como pendiente. La resolución registra fecha y motivo cuando corresponda. El frontend añade historial de cambios, admite reapertura y usa `satisfecha`/`inactiva`; S04 usa `resuelta`/`cancelada`. El grafo de transiciones final no está definido. [F03, F04; D08, D10]
+La fase 5 adopta `pendiente → en_proceso | resuelta | cancelada` y `en_proceso → resuelta | cancelada`. Para cerrar se requiere motivo y se conservan actor y fecha. Una reaparición se registra como nueva ocurrencia. Los estados finales reemplazan `satisfecha`/`inactiva` del prototipo conectado. El usuario aprobó cinco categorías (Medicamentos, Alimentación, Transporte, Compañía y Otros apoyos) con un ítem general cada una, descripción de 5 a 500 caracteres, prioridad explícita y cantidad opcional mayor que cero y hasta 10.000, acompañada de unidad. Las necesidades institucionales avanzadas quedan fuera de esta fase. [D09, D10, D14 y D18 resueltas para fase 5]
 
 ### 7.4 Riesgos
 
@@ -280,7 +280,7 @@ S03 permite evidencia de tarea o indicación; S09 incluye evidencia de visita. S
 
 RF-04 usa una disyunción: **riesgo alto O al menos una necesidad pendiente de categoría medicamentos**. No se requiere que ambas condiciones existan. El texto antiguo pide una sola alerta si coinciden, mientras S01 actualizado/S03 exigen exactamente una fuente informada por alerta.
 
-**Resolución confirmada por el usuario:** una alerta por fuente y un caso prioritario agrupado en pantalla. Si coinciden una fuente de riesgo alto y otra de medicamentos pendientes, se conservan alertas independientes con su fuente; la presentación las agrupa en el caso del adulto. Agrupar la vista no fusiona ni elimina esas alertas. Los reintentos de una misma causa no deben confundirse con fuentes distintas. La identidad exacta de la fuente, la deduplicación de ocurrencias y las reglas de cierre/reapertura siguen pendientes D06.
+**Resolución confirmada por el usuario:** una alerta por cada fila de factor de riesgo alto vigente, ocurrencia pendiente de medicamentos o ventana sin visitas. Riesgo y medicamentos son prioritarios y se agrupan por adulto para su consulta. Una alerta pendiente pasa a en atención o resuelta. Una en atención pasa a resuelta. El cierre manual exige acción tomada. Al desaparecer la causa se cierra automáticamente. Una fuente ya resuelta vuelve a generar alerta únicamente como otra ocurrencia. Para ausencia se usa como identidad la última visita efectiva por adulto, o el alta si aún no hay visitas. El cierre manual de seguimiento conserva la misma ventana hasta que se registre una nueva visita efectiva. [D06 y D10 resueltas para fase 6]
 
 Los reportes deben distinguir cantidad de alertas de cantidad de casos prioritarios: dos alertas de un adulto no justifican contar dos adultos prioritarios. La deduplicación del caso agrupado deriva de la agrupación confirmada; las demás métricas y filtros siguen pendientes de contrato.
 
@@ -293,7 +293,7 @@ generar seguimiento si días_calendario(hoy, referencia) > umbral_efectivo
 umbral predeterminado documentado = 15
 ```
 
-A los 15 días no corresponde generar por superar ese umbral; a los 16 sí. La fuente habla de días calendario, no necesariamente bloques de 24 horas. La zona horaria de negocio no está acordada; la configuración del equipo de desarrollo no la define. [S01 RF-05, §16.5; D16]
+A los 15 días no corresponde generar por superar ese umbral; a los 16 sí. La revisión automática es diaria y usa el calendario de República Dominicana (`America/Santo_Domingo`). El umbral toma el valor efectivo de la cuenta. [S01 RF-05, §16.5; D16]
 
 Las reglas nombran además `AUSENCIA_VISITA`, `INDICACION_VENCIDA`, `TAREA_NO_REALIZADA`, `NECESIDAD` y `RIESGO_ALTO`; no todos tienen condición, severidad, calendario o destinatarios completos. No deben convertirse en automatizaciones nuevas sin definición. [S03; D06]
 
@@ -303,7 +303,7 @@ El frontend mantiene una abierta por adulto/tipo, agrupa causas con una firma, c
 
 Se documentan avisos personales y de cuenta, estados de lectura y fecha de lectura. La autorización debe comprobarse al generarlos **y** consultarlos. Una notificación no debe revelar nombre, situación médica ni datos de un adulto a quien perdió permiso o nunca lo tuvo. [S01 RF-18, S03]
 
-S04 requiere `usuario_id` en cada notificación; no contiene destinatario exclusivamente de cuenta ni lectura individual por cada miembro. Falta decidir entre fan-out personal o aviso de cuenta con recibos por destinatario. No se ha acordado correo, SMS ni push para alertas operativas. [D14]
+Para alertas, el aviso es interno y personal, asociado a la cuenta. Se genera para Coordinadores responsables y Administradores de Organización con acceso al expediente. Cada destinatario registra su propia lectura. Cada consulta revalida el alcance. [D14 resuelta para fase 6]
 
 ### 7.8 Resumen y reportes
 
@@ -336,7 +336,7 @@ Estos beneficios no tienen una matriz completa de funcionalidades ni estructura 
 
 **Acceso vencido confirmado por el usuario:** cuando vence la prueba o suscripción sin un pago de prueba exitoso en Stripe, la cuenta solo puede acceder a su cuenta y gestionar la suscripción. Se bloquean los módulos operativos, tanto lectura como escritura: no se adopta un modo operativo de solo consulta. La restricción es por la cuenta cuyo acceso venció y se suma a los permisos de cada persona; solo el titular conserva la facultad de pagar. [Regla de acceso de D07]
 
-La API debe aplicar el bloqueo en endpoints operativos, no solo en navegación. Un lote offline no puede usarse para evitarlo: mientras la cuenta esté vencida no se aceptan escrituras operativas, incluidos pendientes de sincronización. Falta definir la conservación/reintento de la cola y su presentación al usuario, sin dar por sincronizados registros rechazados. Los procesos internos y el alcance exacto de la gestión de cuenta por rol requieren diseño. [D07/D16]
+La API bloquea las operaciones cuando la cuenta está vencida, incluidas las peticiones directas y los lotes offline. Las capturas rechazadas permanecen visibles en la cola de la pestaña y pueden reintentarse al recuperar acceso, conforme al [contrato de sincronización](docs/contratos/sync.md). [D07/D16]
 
 Siguen pendientes precios, moneda, vigencia, límites, flujo concreto de Stripe y renovaciones/cancelaciones/reembolsos. Elegir Stripe no elige automáticamente Checkout, Elements o un modelo de suscripción recurrente. [Detalles pendientes D07/D08]
 
@@ -480,11 +480,11 @@ Este es un contrato de funciones del frontend. No hay decisión de usarlo direct
 
 No basta con cambiar `VITE_API_URL`: habrá que adaptar modelos, contexto de cuenta, permisos, serialización, lectura y cola offline. Esa implementación no forma parte de este encargo. [F01–F08; D01–D16]
 
-### 9.3 Contrato REST aún por concretar
+### 9.3 Contratos REST
 
 Los diagramas UML muestran rutas ilustrativas para perfiles/adultos, visitas, necesidades, usuarios, resumen y reportes. No hay un catálogo completo, versionado y uniforme de endpoints ni un OpenAPI encontrado en el repositorio.
 
-Antes de escribir handlers deben definirse recursos, verbos, nombres de campos, paginación, filtros, orden, representación de IDs, estados, errores, contexto multicuenta, autorización y compatibilidad con el frontend. También faltan el contrato del lote de sincronización, la carga/descarga de evidencias y la confirmación de pagos. [S08; D08]
+Los contratos por módulo en `docs/contratos/` y las [convenciones de API](docs/CONVENCIONES-API.md) definen recursos, campos, paginación, filtros, orden, estados y errores. Para estas fases se usan los contratos de [necesidades](docs/contratos/necesidades.md), [alertas](docs/contratos/alertas.md) y [sincronización](docs/contratos/sync.md). La confirmación de pagos se concreta en fase 8. [S08; D08]
 
 ## 10. Offline y sincronización
 
@@ -494,26 +494,11 @@ RF-10/CU-14 requieren capturar visitas y necesidades sin red, marcarlas pendient
 
 Cada operación debe conservar vínculo con usuario, cuenta y marca UTC. La identidad y los permisos actuales se vuelven a validar al sincronizar: una captura offline no autoriza a quien perdió la asignación, la membresía o el acceso. No se debe aceptar un registro duplicado por reintentar un lote cuyo resultado se perdió. [S01 RF-10 y Seguridad]
 
-La regla de conflicto documentada es **Last-Write-Wins por marca de modificación UTC**, conservando la versión más reciente. No se ha acordado el origen confiable del reloj, tolerancia al desfase, empate, granularidad del conflicto ni tratamiento de historiales. [D16]
+La regla de conflicto documentada es **Last-Write-Wins por marca de modificación UTC**. El contrato de sincronización detalla la tolerancia al desfase, el desempate y la comparación por ocurrencia. [D16]
 
-### 10.2 Referencia de la implementación local
+### 10.2 Implementación conectada
 
-`OperacionPendiente` conserva ID de operación, Usuario, entidad visita/necesidad, tipo crear/actualizar, ID del registro, datos, marca de la versión base, marca de modificación, creación, intentos y último error. La cola se filtra por usuario de sesión y se reintenta cada 30 segundos y al recuperar conexión. En un empate de marcas gana servidor porque la comparación local es estrictamente `>`. Estos detalles son de F05; no son todavía el protocolo acordado para la API.
-
-### 10.3 Decisiones de diseño necesarias
-
-- Identificador estable de operación y de registro compatible con UUID/IDs de S04.
-- Persistencia del resultado para responder de forma idempotente a reenvíos.
-- Orden/dependencias dentro del lote y respuesta por operación.
-- Límite de lote y payload, fallos parciales frente a atomicidad total.
-- Comparación de versiones realizada sin una carrera entre lectura y escritura.
-- Revalidación de todos los adultos/datos relacionados, no solo el adulto principal.
-- Qué ocurre con sesiones expiradas, permisos revocados y registros dados de baja. Para cuenta vencida ya está confirmado bloquear escrituras operativas; falta definir conservación y reintento de su cola sin perder datos.
-- Cómo llega al cliente la versión ganadora y cómo se actualiza su caché.
-- Conservación de auditoría e historial aunque gane otra versión.
-- Cifrado, caducidad y limpieza del mínimo contenido sensible almacenado localmente.
-
-No ampliar el offline a perfiles, riesgos, indicaciones, tareas, pagos o administración sin resolver alcance: S02 usa descripciones más amplias, mientras RF-10 y el simulador delimitan principalmente visitas/necesidades. [D16]
+La cola de la aplicación conectada permanece en memoria de la pestaña y se limpia al cerrar sesión o cambiar de usuario. Cada operación lleva un UUID, cuenta, identificador de registro y marca UTC. El servidor revalida autorización y alcance, resuelve la escritura con bloqueo de la ocurrencia, persiste el resultado idempotente y responde por operación en lotes de hasta 25. Los empates favorecen al servidor. El alcance confirmado incluye visitas ya programadas y autorizadas, alta de necesidades y cambios de su estado. [Contrato de sincronización](docs/contratos/sync.md).
 
 ## 11. Seguridad, privacidad y auditoría
 
@@ -642,7 +627,7 @@ Fecha de las once confirmaciones: **24 de octubre de 2026**. Autoridad: respuest
 | D02 — Resuelta | SQL, diagrama y diccionarios describen versiones diferentes | «Sí, DB.sql será la base técnica». | El modelo parte de S04 y registra ajustes para cumplir reglas aprobadas; no ejecutar el archivo como migración sin validación. |
 | D03 — Resuelta | Voluntario ocasional sin login frente a Auth obligatorio y FK a `auth.users` | «Cuenta e inicio de sesión con Supabase Auth». | Voluntario tiene identidad e inicia sesión; la autorización por visita y la relación con cuenta/plan aún requieren detalle. |
 | D05 — Autorizadores resueltos | V2 exige autorización previa, pero no identifica los roles autorizadores por cuenta | «Familia: Coordinador; Organización: Administrador o Coordinador». | Aplicar estos roles para autorizar visitas; solicitud, aceptación, cancelación y revocación aún necesitan detalle. |
-| D06 — Política principal resuelta | Una alerta agrupada de RF-04 frente a exactamente una fuente por alerta | «Una alerta por fuente y un caso prioritario agrupado en pantalla». | Persistencia y trazabilidad separadas por fuente; agrupación del caso en la vista. Los detalles de deduplicación y ciclo de vida quedan en la tabla pendiente. |
+| D06 — Resuelta para fase 6 | Una alerta agrupada de RF-04 frente a exactamente una fuente por alerta | «Una alerta por fuente y un caso prioritario agrupado en pantalla». | Las fuentes vigentes, el ciclo de vida, la deduplicación y los avisos internos aprobados se describen en el [contrato de alertas](docs/contratos/alertas.md). |
 | D07 — Proveedor y modalidad resueltos | No se había definido pasarela ni modalidad de pago del MVP | El usuario eligió Stripe exclusivamente en sandbox de pruebas, sin pagos reales, para el MVP. | Integrar pagos de prueba con Stripe; no usar modo live ni considerar resuelta la viabilidad comercial en República Dominicana. Flujo, precios y reglas de vigencia siguen pendientes. |
 | D07 — Acceso vencido resuelto | No se sabía si una cuenta vencida conservaría lectura operativa | «Solo acceder a su cuenta y gestionar la suscripción; bloquear módulos operativos». | Bloquear lectura y escritura operativas de la cuenta vencida; conservar acceso a cuenta/suscripción sin alterar permisos ni titularidad de pago. |
 | D09 — Cédula del adulto resuelta | Cédula opcional en SQL/diccionario y obligatoria en frontend; unicidad local por cuenta | «Obligatoria y única en toda la plataforma». | Alta/edición y BD deben garantizar cédula no nula y unicidad global, incluida concurrencia y sin revelar datos ajenos. |
@@ -654,21 +639,24 @@ Fecha de las once confirmaciones: **24 de octubre de 2026**. Autoridad: respuest
 
 ### 15.2 Preguntas que siguen abiertas
 
+El 14/11/2026 el usuario confirmó las reglas de las secciones 7.3, 7.6 y 7.7 para estas fases. También confirmó reutilizar la cola en memoria de la pestaña para registrar necesidades y cambiar su estado sin conexión, con permisos de escritura y sincronización vigentes al enviar. Las preguntas históricas de la tabla solo siguen abiertas para los aspectos que esas decisiones no cubren.
+
+El 15/11/2026 el usuario confirmó que la persistencia de Necesidades debe guardar el decimal recibido sin redondearlo a dos cifras y admitir unidades de hasta 64 caracteres. El [contrato de necesidades](docs/contratos/necesidades.md) y CUIDARED-009 registran esta decisión.
+
 | ID | Discrepancia o ausencia | Pregunta que necesita respuesta |
 | --- | --- | --- |
 | D04 | Falta matriz completa por cuenta, rol, dato y permiso explícito | Con los permisos explícitos de V2 como base, ¿cómo se completan los no definidos? ¿Cómo se persiste/revoca el permiso familiar? ¿Qué relación con la cuenta y alcance tiene el Voluntario autenticado? |
 | D05 | Programación/autorización y autorizadores definidos; otros pasos incompletos | ¿Quién solicita, acepta, cancela o revoca? ¿Puede una visita abarcar varias cuentas? ¿Qué ve y cambia cada visitante? |
-| D06 | Una alerta por fuente ya confirmada; fuente concreta, ciclo de vida y automatismos incompletos | ¿Qué identifica cada fuente/ocurrencia? ¿Cómo se cierra/reabre, deduplica y notifica? ¿Cuáles tipos adicionales entran ahora? |
 | D07 | Planes pagados/prueba de 7 días, Stripe sandbox y bloqueo operativo al vencer definidos; flujo y vigencia incompletos | ¿Qué flujo de Stripe, precios, moneda, límites y cálculo mensual/anual se adoptan? ¿Cómo se renueva, cancela o reembolsa? ¿Qué gestión de cuenta permite cada rol y qué ocurre con procesos internos al vencer? |
-| D08 — Parcialmente resuelta | CR-162: errores y convenciones de colección aprobados el 31/10/2026 | `docs/CONVENCIONES-API.md` define y acompaña utilidades implementadas de paginación (page 1, limit 20, máximo 100), metadatos, orden y filtros permitidos. Backend y frontend tienen pruebas del contrato. Quedan por definir recursos/DTO y campos por módulo, contexto de cuenta activa y contrato del lote sync; los listados persistidos se integrarán en su fase. |
-| D09 | Cédula obligatoria/global ya definida; edad, formatos y otros dominios aún diferentes | ¿Edad mínima/máxima? ¿Formato telefónico/cédula canónico? ¿Se permite cantidad cero? ¿Cómo limitar membresías y perfiles Cuidador duplicados? El tratamiento tras anonimización se coordina con D15. |
-| D10 | Estados permitidos sin grafo de transiciones | ¿Cuáles son transiciones, reaperturas, estados terminales, notas obligatorias y actores de cada cambio? |
+| D08 — Parcialmente resuelta | CR-162: errores y convenciones de colección aprobados el 31/10/2026 | `docs/CONVENCIONES-API.md` define paginación, metadatos, orden y filtros permitidos. Los contratos por módulo y el del lote offline ya están escritos para las fases 1 a 6. Quedan los recursos y campos específicos de reportes, suscripciones y pagos. |
+| D09 | Cédula obligatoria/global ya definida; quedan dominios distintos en las fuentes | ¿Formato telefónico/cédula canónico? ¿Cómo limitar membresías y perfiles Cuidador duplicados? El tratamiento tras anonimización se coordina con D15. |
+| D10 | Estados permitidos sin un grafo general de transiciones | Las transiciones y motivos de Necesidades y Alertas están confirmados en sus contratos. Las reglas de las fases siguientes se definen en sus diseños. |
 | D11 | Cuestionario, pesos, umbrales, máximo vigente y caso sin factores confirmados; faltan persistencia y respuestas incompletas | ¿Cómo se tratan respuestas incompletas y se conserva la versión/historia del cuestionario? |
 | D12 | Evidencia validada antes de completar ya definida; recurrencia y cambios posteriores incompletos | ¿Frecuencia y fin de recurrencia? ¿Qué evidencia debe estar validada si hay varias? ¿Qué pasa al reabrir, cambiar responsable, modificar o invalidar evidencia después del cierre? |
 | D13 | Archivos de tarea, visita e indicación con representación distinta | ¿Qué adjuntos se admiten, límites de tamaño/cantidad, tipos, retención, acceso, validación y funcionamiento offline? |
 | D14 | Catálogos y parámetros no aprobados; avisos de cuenta incompletos | ¿Catálogo TipoCuidado, territorio, categorías, riesgos y claves oficiales? ¿Prioridad entre `valor`/`valor_defecto`? ¿Aviso personal por miembro o aviso de cuenta con lectura individual? |
 | D15 | Consentimiento, retención, baja y auditoría sin política final | ¿Qué prueba de consentimiento y representación se exige? ¿Plazos, anonimización, fallecimiento, historial y acceso a auditoría? ¿Qué ocurre con datos al cerrar una cuenta o membresía? |
-| D16 — Propuesta técnica en 4c (06/11/2026) | LWW UTC definido sin autoridad del reloj, empate ni protocolo; cuenta vencida no acepta operaciones | ¿Origen/tolerancia de marcas, desempate, granularidad, atomicidad del lote, límites, confirmación y reintentos? ¿Qué módulos/roles operan offline y cómo se conserva/reintenta la cola al vencer la cuenta o revocarse autorización? ¿Zona horaria de negocio? |
+| D16 — Resuelta para alcance de RF-10 | Cuándo conservar la captura y cómo resolver escrituras concurrentes | El [contrato de sincronización](docs/contratos/sync.md) fija alcance, reloj, lotes, permisos y reintentos. El seguimiento de visitas usa días calendario de Santo Domingo. |
 | D17 — Parcialmente resuelta | Stack y acceso acordados el 24/10/2026; configuración remota pendiente | Backend JavaScript/Node.js/Express (el usuario reemplazó la selección inicial TypeScript), Zod, ESLint/Prettier, 2 espacios, Vitest/Supertest y módulos por funcionalidad. SDK Supabase frontend y validación en Express; códigos de correo y solo invitaciones. Contraseña mínima 8 con mayúscula/minúscula/número/símbolo; OTP 15 min; sesión máxima 12 h/inactividad 30 min en servidor. Perfil: cédula usuario 11 dígitos sin guiones, nombres/apellidos obligatorios, teléfono opcional, correo Auth y sin autoasignar rol/estado. Persistencia de fase 1 aprobada y aplicada el 25/10/2026; configuración Auth y pruebas con usuarios reales requieren revisión aparte. Detalles técnicos y decisiones residuales: `docs/FASE-1-PERFIL-Y-ACCESO.md`. |
 | D18 | Trabajador social, inventario, rutas y configuración de usuario en fuentes anteriores; Org_Necesidad mencionado en el plan avanzado V2 sin modelo en S04 | ¿Qué funciones entran en esta etapa? ¿Cómo se concreta Org_Necesidad? ¿Los demás conceptos se mapean a roles/módulos vigentes o quedan fuera? |
 | D19 | Calidad/despliegue/operación a nivel de objetivos | ¿Proveedor, plan Supabase, copias/recuperación, procesos periódicos, monitoreo, método de medición de rendimiento y criterios de entrega? |

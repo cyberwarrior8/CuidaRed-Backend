@@ -42,7 +42,9 @@ begin
   select (cuidared_api.api_registrar_cuenta(jsonb_build_object('tipo','familia','nombre','Familia de prueba',
     'categoria_cuenta_id',categoria,'municipio_cod','0101','correo','familia@backoffice.test'))->>'cuenta_id')::bigint into v_cuenta;
   perform set_config('request.jwt.claims','{}',true);
-  select fecha_fin_prueba into prueba_fin from cuidared.cuenta where cuenta_id=v_cuenta and fecha_fin_prueba-fecha_inicio_prueba=interval '14 days';
+  select fecha_fin_prueba into prueba_fin from cuidared.cuenta
+    where cuenta_id=v_cuenta
+      and fecha_fin_prueba-fecha_inicio_prueba=make_interval(hours=>24*cuidared_interno.bo_parametro('prueba_duracion_dias'));
   if prueba_fin is null then raise exception 'Alta no respeta duración configurable'; end if;
   detalle:=cuidared_api.api_bo_leer(soporte,soporte_sesion,'aal1','detalle',jsonb_build_object('cuenta',v_cuenta));
   if detalle->>'cuenta_id'<>v_cuenta::text or detalle->>'envejecientes_count'<>'0' or detalle::text like '%'||codigo_cedula||'%'

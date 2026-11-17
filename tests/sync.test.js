@@ -1,4 +1,4 @@
-/* Pruebas API de la sincronización de visitas sin conexión · ID04/RF-10 (RNF-4.2), gateway real con transporte simulado. © 2026 Equipo CuidaRed – INTEC. */
+/* Pruebas API de sincronización de visitas y necesidades · ID04/ID05, RF-10. © 2026 Equipo CuidaRed – INTEC. */
 import { describe, expect, it, vi } from 'vitest';
 import request from 'supertest';
 import { createApp } from '../src/app.js';
@@ -331,7 +331,7 @@ describe('POST /sync: lote de operaciones', () => {
     const res = await post(s, [
       registrar({
         id_cliente: ID.op1,
-        entidad: 'necesidad',
+        entidad: 'reporte',
         tipo: 'crear',
         datos: { descripcion: 'dato sensible', cualquier: ['cosa'] },
       }),
@@ -358,6 +358,55 @@ describe('POST /sync: lote de operaciones', () => {
     const llamadas = s.rpcLlamadas(APLICAR);
     expect(llamadas).toHaveLength(2);
     for (const { cuerpo } of llamadas) expect(cuerpo.p_operacion.datos).toEqual({});
+  });
+});
+
+describe('POST /sync: necesidades de la fase 5', () => {
+  const alta = {
+    id_cliente: ID.op1,
+    entidad: 'necesidad',
+    tipo: 'registrar',
+    registro_id: ID.visita,
+    actualizado_en: MARCA,
+    datos: {
+      envejeciente_id: ID.adulto1,
+      necesidad_id: 1,
+      prioridad_id: 1,
+      descripcion: 'Compra de alimentos',
+    },
+  };
+  const cambio = {
+    id_cliente: ID.op2,
+    entidad: 'necesidad',
+    tipo: 'cambiar_estado',
+    registro_id: ID.visita,
+    actualizado_en: MARCA,
+    base_actualizado_en: BASE,
+    datos: { estado: 'resuelta', motivo: 'Compra realizada.' },
+  };
+
+  it('conserva el UUID local, los datos validados y la versión al llamar la RPC', async () => {
+    const s = setup({
+      rpc: { [APLICAR]: ({ p_operacion }) => itemRpc({ id_cliente: p_operacion.id_cliente }) },
+    });
+    await post(s, [alta, cambio]).expect(200);
+    expect(s.rpcLlamadas(APLICAR).map(({ cuerpo }) => cuerpo)).toEqual(
+      [alta, cambio].map((p_operacion) => ({ p_cuenta_id: '7', p_operacion })),
+    );
+  });
+
+  it('rechaza altas con base, campos de cuenta y cierres sin motivo antes de la RPC', async () => {
+    const s = setup();
+    const invalidas = [
+      { ...alta, base_actualizado_en: BASE },
+      { ...alta, id_cliente: ID.op2, datos: { ...alta.datos, cuenta_id: '7' } },
+      { ...cambio, id_cliente: ID.op3, datos: { estado: 'resuelta' } },
+    ];
+    const res = await post(s, invalidas).expect(200);
+    expect(res.body.data.resultados.map((item) => item.motivo)).toEqual(
+      invalidas.map(() => 'INVALID_INPUT'),
+    );
+    expect(s.rpcLlamadas(APLICAR)).toHaveLength(0);
   });
 });
 

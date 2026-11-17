@@ -19,7 +19,7 @@ import {
   requireEmptyBody,
   titularidadSchema,
 } from './miembros-schemas.js';
-import { invitarMiembro } from './miembros-service.js';
+import { invitarMiembro, reenviarInvitacion } from './miembros-service.js';
 
 const sinPermiso = () =>
   new AppError(403, 'FORBIDDEN', 'No tienes permiso para realizar esta acción.');
@@ -115,6 +115,26 @@ export function createMiembrosRouter({ audit, adminGateway = null }) {
     const membresiaId = readRouteId(req.params.membresiaId);
     res.json({ data: await repoDe(res).detalle(cuentaDe(res), membresiaId) });
   });
+
+  router.post(
+    '/miembros/:membresiaId/reenviar-invitacion',
+    gestionarMiembros,
+    limitarInvitaciones,
+    async (req, res) => {
+      const membresiaId = readRouteId(req.params.membresiaId);
+      requireEmptyBody(req.body);
+      const resultado = await reenviarInvitacion(
+        { repository: repoDe(res), adminGateway },
+        cuentaDe(res),
+        membresiaId,
+      );
+      registrar(
+        res,
+        resultado === 'enviada' ? 'miembro.invitacion_reenviada' : 'miembro.invitacion_disponible',
+      );
+      res.json({ data: { resultado } });
+    },
+  );
 
   // Cambio de rol: cierra la membresía actual y abre otra (historial); devuelve la nueva.
   router.patch('/miembros/:membresiaId', gestionarMiembros, async (req, res) => {

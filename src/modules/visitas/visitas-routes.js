@@ -16,6 +16,7 @@ import {
   cancelarVisitaSchema,
   parseBody,
   programarVisitaSchema,
+  programarVisitasRecurrentesSchema,
   readSolicitudesQuery,
   readVisitasQuery,
   registrarVisitaSchema,
@@ -66,6 +67,18 @@ export function createVisitasRouter({ audit }) {
       const visita = await repo(res).programar(cuentaId(res), datos);
       log(res, 'visita.programada');
       res.status(201).json({ data: visita });
+    },
+  );
+
+  router.post(
+    '/visitas/recurrentes',
+    requirePermiso('visitas:programar'),
+    requirePermiso('visitas:autorizar'),
+    async (req, res) => {
+      const datos = parseBody(programarVisitasRecurrentesSchema, req.body);
+      const serie = await repo(res).programarRecurrentes(cuentaId(res), datos);
+      log(res, 'visita.serie_programada');
+      res.status(201).json({ data: serie });
     },
   );
 

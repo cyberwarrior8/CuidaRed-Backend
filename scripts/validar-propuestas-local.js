@@ -1,6 +1,6 @@
 /* Valida las propuestas SQL en un PostgreSQL LOCAL desechable · herramientas. © 2026 Equipo CuidaRed – INTEC. */
 /*
- * Uso:  node scripts/validar-propuestas-local.js [--conservar] [--solo=2b,3a|--solo=integracion]
+ * Uso: node scripts/validar-propuestas-local.js [--conservar] [--solo=2b,3a|--solo=integracion|--solo=cierre|--solo=fases-5-6|--solo=web-push]
  * Requiere `psql` en el PATH y un PostgreSQL local accesible con las variables estándar (PGHOST, PGUSER,
  * PGPASSWORD…; por defecto localhost/postgres). Crea la base `cuidared_validacion_local`, carga en orden:
  *   1. docs/verificacion/local/supabase-stub.sql  (esquema auth y roles simulados)
@@ -28,17 +28,36 @@ const base = `cuidared_validacion_local_${process.pid}`;
 const conservar = process.argv.includes('--conservar');
 // --solo=2b,3a: además de la base (2a y ayudas), carga solo las propuestas y pruebas con esos prefijos.
 const soloArg = process.argv.find((a) => a.startsWith('--solo='));
+const soloCierre = soloArg === '--solo=cierre';
+const fasesCincoSeis = soloArg === '--solo=fases-5-6';
+const webPush = soloArg === '--solo=web-push';
+const baseDeAlertas = fasesCincoSeis || webPush;
 const soloIntegracion = !soloArg || soloArg === '--solo=integracion';
 const solo =
-  soloArg && !soloIntegracion ? ['2a', '00', ...soloArg.slice(7).split(',').filter(Boolean)] : null;
+  soloArg && !soloIntegracion && !soloCierre && !baseDeAlertas
+    ? ['2a', '00', ...soloArg.slice(7).split(',').filter(Boolean)]
+    : null;
 const incluido = (codigo) => !solo || solo.some((p) => codigo.startsWith(p));
+const esMigracionPosterior = (nombre) =>
+  /^\d{14}_(?:backoffice(?:_tareas|_alertas_compatibilidad|_prueba_siete_dias)?|(?:fases_5_y_6|cron_alertas)_cuidared_009|web_push_cuidared_010|alertas_necesidades_prioritarias_cuidared_011)\.sql$/.test(
+    nombre,
+  );
 const esMigracionBase = (nombre) =>
-  nombre.endsWith('.sql') && !/^\d{14}_fase_(2[abc]|3[ab]|4[abcd])_/.test(nombre);
+  nombre.endsWith('.sql') &&
+  !esMigracionPosterior(nombre) &&
+  !/^\d{14}_(?:fase_(2[abc]|3[ab]|4[abcd])_|cierre_fases_2_a_4_)/.test(nombre);
 const esPruebaSeleccionada = (n) =>
   /^pruebas-.*\.sql$/.test(n) &&
-  (soloIntegracion
-    ? ['pruebas-00-ayudas.sql', 'pruebas-integracion-2-4.sql'].includes(n)
-    : incluido(n.slice(8)));
+  (n === 'pruebas-00-ayudas.sql' ||
+    (webPush
+      ? ['pruebas-web-push.sql', 'pruebas-web-push-entregas.sql'].includes(n)
+      : fasesCincoSeis
+        ? /^(?:pruebas-fase-5|pruebas-[56][a-z]?-.*)\.sql$/.test(n)
+        : soloCierre
+          ? n === 'pruebas-cierre-2-4.sql'
+          : soloIntegracion
+            ? n === 'pruebas-integracion-2-4.sql'
+            : incluido(n.slice(8))));
 const env = { ...process.env, PGHOST: host, PGUSER: process.env.PGUSER ?? 'postgres' };
 // Evita que libpq priorice una dirección o un servicio remoto sobre PGHOST.
 delete env.PGHOSTADDR;
@@ -90,8 +109,14 @@ try {
     join(raiz, 'docs/verificacion/local/trigger-perfil-stub.sql'),
     'trigger de perfil (stub)',
   );
-  // Las fases 2 a 4 se prueban desde las propuestas, aunque sus versiones aplicadas también estén archivadas.
-  for (const f of ordenados(join(raiz, 'supabase/migrations'), esMigracionBase))
+  // Los grupos existentes validan sus propuestas sobre las fases de la PWA. Backoffice
+  // tiene su propio juego transaccional, que requiere Auth, auditoría y Cron de Supabase.
+  for (const f of ordenados(
+    join(raiz, 'supabase/migrations'),
+    baseDeAlertas
+      ? (nombre) => nombre.endsWith('.sql') && !esMigracionPosterior(nombre)
+      : esMigracionBase,
+  ))
     ejecutarArchivo(f, f.slice(raiz.length));
   if (soloIntegracion) {
     ejecutarArchivo(
@@ -99,11 +124,37 @@ try {
       'datos previos de integración',
     );
   }
-  for (const f of ordenados(
-    join(raiz, 'docs/propuestas'),
-    (n) => /^fase-(2[abc]|3[ab]|4[abcd])-.*\.sql$/.test(n) && incluido(n.slice(5)),
+  if (baseDeAlertas) {
+    ejecutarArchivo(
+      join(raiz, 'docs/verificacion/local/datos-previos-fases-5-6.sql'),
+      'metadatos previos de Supabase para las fases 5 y 6',
+    );
+  }
+  for (const f of ordenados(join(raiz, 'docs/propuestas'), (n) =>
+    baseDeAlertas
+      ? /^fase-[56][a-z]?-.*\.sql$/.test(n)
+      : /^fase-(2[abc]|3[ab]|4[abcd])-.*\.sql$/.test(n) && incluido(n.slice(5)),
   )) {
     ejecutarArchivo(f, f.slice(raiz.length));
+  }
+  if (webPush) {
+    ejecutarArchivo(
+      join(raiz, 'docs/propuestas/web-push-suscripciones.sql'),
+      'suscripciones Web Push',
+    );
+    ejecutarArchivo(join(raiz, 'docs/propuestas/web-push-entregas.sql'), 'entregas Web Push');
+  }
+  if (soloCierre) {
+    for (const bloque of [
+      'correcciones',
+      'consentimiento',
+      'visitas-recurrentes',
+      'indicaciones-adjuntos',
+      'auditoria',
+    ]) {
+      const archivo = `docs/propuestas/cierre-2-4-${bloque}.sql`;
+      ejecutarArchivo(join(raiz, archivo), archivo);
+    }
   }
   for (const f of ordenados(join(raiz, 'docs/verificacion/local'), esPruebaSeleccionada)) {
     ejecutarArchivo(f, f.slice(raiz.length));

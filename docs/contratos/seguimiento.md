@@ -4,7 +4,7 @@
 
 ID03 · RF-12, RF-13, RF-14, RF-15 y RF-3.4 (CU-06) · Reglas de Negocio V2. Cubre asignaciones de cuidadores y voluntarios, permiso familiar explícito, evaluación y factores de riesgo, indicaciones médicas e historial consolidado. El perfil, los contactos y la baja del adulto pertenecen al bloque 3a.
 
-**Estado:** código y pruebas con gateway simulado (`tests/seguimiento.test.js`) y persistencia como **propuesta SQL sin aplicar** (`docs/propuestas/fase-3b-seguimiento.sql`, validada solo en un PostgreSQL local con `auth` simulado; no certifica RLS ni Auth de Supabase). Nada de esto toca la base remota. Las decisiones abiertas se marcan «Propuesta técnica (Dxx)» y esperan confirmación.
+**Estado:** el bloque 3b está aplicado. El catálogo adicional de riesgos, el requisito de perfil vigente para el Cuidador y los adjuntos médicos forman parte de la [propuesta de cierre](../CAMBIOS-SCHEMA-CUIDARED.md#cuidared-008--correcciones-de-las-fases-2-a-4).
 
 Aplican `docs/CONVENCIONES-API.md` (CR-162) y el contexto de cuenta de la fase 2: todas las rutas cuelgan de `/api/v1/cuentas/:cuentaId`, exigen `Authorization: Bearer <access_token>` y pasan por `requireCuenta`. La cuenta **nunca** concede acceso por sí misma, y el actor, la cuenta efectiva, el rol o los resultados calculados (puntaje, nivel) **nunca** se aceptan del cuerpo: los cuerpos son `strictObject` y un campo extra se rechaza con 422.
 
@@ -119,7 +119,8 @@ La plataforma solo transcribe lo indicado por personal de salud; no determina tr
 - **Crear.** `{ tipo_indicacion_id, titulo (3–80), descripcion? (≤ 300), frecuencia_horario? (≤ 60), fecha_inicio (YYYY-MM-DD), fecha_fin? (≥ inicio) }`. Nace `activa`; guarda `registrado_por` y `actualizado_por`. Un vacío equivale a `null`.
 - **Editar (PATCH).** Mismos campos, todos opcionales y al menos uno; `null` limpia un campo opcional, omitirlo lo conserva. No cambia el estado. Una indicación `finalizada` no se edita (409 `INVALID_STATE`).
 - **Estado (Propuesta técnica D10).** `activa ⇄ suspendida`; `activa | suspendida → finalizada`; `finalizada` es terminal. Repetir el estado actual no cambia nada.
-- **Listar.** Orden `sort` por `fecha_inicio` (predeterminado, descendente), `fecha_creacion` o `indicacion_medica_id`, con desempate fijo por `indicacion_medica_id`; un orden de varios campos o un desempate descendente se rechaza con 422. `filter[estado]` (igualdad). El familiar autorizado consulta; el voluntario no tiene el permiso. No se expone `evidencia_url` (archivos: D13 pendiente).
+- **Listar.** Orden `sort` por `fecha_inicio` (predeterminado, descendente), `fecha_creacion` o `indicacion_medica_id`, con desempate fijo por `indicacion_medica_id`; un orden de varios campos o un desempate descendente se rechaza con 422. `filter[estado]` (igualdad). El familiar autorizado consulta. Los adjuntos registrados se consultan por su propia ruta y las URL históricas quedan bajo custodia.
+- **Adjuntos privados.** `POST /indicaciones/:indicacionId/evidencias/subida` recibe `nombre_archivo`, `tipo_mime` y `tamano_bytes`. Devuelve bucket y ruta. Tras subir el archivo, `POST /indicaciones/:indicacionId/evidencias` recibe los mismos metadatos y `ruta`, y devuelve su ID. Ambas rutas requieren permiso para editar una indicación sin finalizar de un adulto activo. `GET /indicaciones/:indicacionId/evidencias` exige permiso de lectura y responde metadatos mínimos y URL de cinco minutos. Se admiten JPG, PNG, WebP o PDF de hasta 5 MB.
 - Cada indicación: `{ indicacion_medica_id, envejeciente_id, tipo_indicacion_id, tipo, titulo, descripcion, frecuencia_horario, fecha_inicio, fecha_fin, estado, registrado_por, actualizado_por, fecha_creacion, fecha_actualizacion }`.
 
 ### Historial consolidado (RF-3.4 / CU-06)
