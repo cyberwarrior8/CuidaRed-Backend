@@ -39,7 +39,7 @@ const solo =
     : null;
 const incluido = (codigo) => !solo || solo.some((p) => codigo.startsWith(p));
 const esMigracionPosterior = (nombre) =>
-  /^\d{14}_(?:backoffice(?:_tareas)?|(?:fases_5_y_6|cron_alertas)_cuidared_009|web_push_cuidared_010|alertas_necesidades_prioritarias_cuidared_011)\.sql$/.test(
+  /^\d{14}_(?:backoffice(?:_tareas|_alertas_compatibilidad|_prueba_siete_dias)?|(?:fases_5_y_6|cron_alertas)_cuidared_009|web_push_cuidared_010|alertas_necesidades_prioritarias_cuidared_011)\.sql$/.test(
     nombre,
   );
 const esMigracionBase = (nombre) =>

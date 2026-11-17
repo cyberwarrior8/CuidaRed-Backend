@@ -241,7 +241,14 @@ El 14/11/2026 se aprovisionaron en Supabase Auth tres operadores sintéticos, co
 
 ### Compatibilidad del mantenimiento con las alertas de seguimiento
 
-**Estado.** Propuesta pendiente de aplicar. Con ambas migraciones instaladas, el generador anterior puede fallar con `alerta_fuente_obligatoria_chk` al encontrar un caso elegible. Se reprodujo en una base local desechable.
+**Estado.** Aplicado en Supabase CuidaRed el 17/11/2026 con aprobación del usuario. Se reprodujo en una base local desechable el fallo `alerta_fuente_obligatoria_chk` del generador anterior al encontrar un caso elegible.
 
-- [Propuesta SQL](propuestas/backoffice-alertas-compatibilidad.sql). Reemplaza únicamente `cuidared_interno.bo_alertas_seguimiento()` para que el mantenimiento use el motor de alertas de CUIDARED-009 en el seguimiento familiar. Conserva los dos trabajos programados y reaprovecha la comprobación de consentimiento, el umbral efectivo y la deduplicación por fuente existentes.
+- [Migración `20261117055733`](../supabase/migrations/20261117055733_backoffice_alertas_compatibilidad.sql). Reemplaza `cuidared_interno.bo_alertas_seguimiento()` para que el mantenimiento use el motor de alertas de CUIDARED-009 en el seguimiento familiar. Conserva los dos trabajos programados y reaprovecha la comprobación de consentimiento, el umbral efectivo y la deduplicación por fuente existentes.
 - [Prueba local de compatibilidad](verificacion/local/pruebas-backoffice-alertas.sql). Comprueba el límite exacto, la fuente obligatoria y que ambos trabajos puedan ejecutarse sin crear duplicados.
+- En Supabase se verificaron los permisos internos de la función y la ejecución exitosa de `cuidared-backoffice-diario` a las 06:00 UTC, después de aplicar la migración.
+
+### Duración de las pruebas nuevas
+
+La [migración `20261117055736`](../supabase/migrations/20261117055736_backoffice_prueba_siete_dias.sql) cambió `cuidared.configuracion_sistema.prueba_duracion_dias` de 14 a 7 y registró el ajuste en la auditoría del Backoffice. El disparador `cuidared.fn_prueba_inmutable()` calcula el fin desde el inicio del alta con 168 horas transcurridas. La regla aplica a las altas nuevas de Familia y Organización.
+
+Las pruebas locales confirmaron las 168 horas en ambos tipos de cuenta. La comparación antes y después en Supabase confirmó que las fechas de las tres cuentas existentes, incluidas las fechas históricas, se conservaron.

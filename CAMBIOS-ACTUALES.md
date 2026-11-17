@@ -3,7 +3,8 @@
 ## 17/11/2026 — Integración de Backoffice con las fases 5 y 6
 
 - La aplicación monta Backoffice, la sesión de navegador y Web Push. La recuperación de sesión también respeta el bloqueo de cuentas del Backoffice.
-- La comprobación en PostgreSQL desechable reprodujo un conflicto del mantenimiento antiguo con las alertas que exigen fuente. La [propuesta de compatibilidad](docs/propuestas/backoffice-alertas-compatibilidad.sql) queda pendiente de aprobación para Supabase.
+- Supabase recibió la corrección de compatibilidad. El mantenimiento de Backoffice usa el motor de alertas con fuente obligatoria y se ejecutó con éxito después del cambio.
+- Las pruebas nuevas de Familia y Organización vuelven a durar 168 horas desde el alta. Se verificó que las fechas de las pruebas existentes coinciden con las de antes del ajuste. [Migraciones y verificación](docs/CAMBIOS-SCHEMA-CUIDARED.md#compatibilidad-del-mantenimiento-con-las-alertas-de-seguimiento).
 
 ## 17/11/2026 — Sesión al reabrir CuidaRed
 
