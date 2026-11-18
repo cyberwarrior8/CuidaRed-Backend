@@ -30,6 +30,7 @@ const repeticion = z.strictObject({
 
 export const crearTareaSchema = z.strictObject({
   envejeciente_id: uuid,
+  visita_id: uuid.optional(),
   cuidador_id: idEntero,
   titulo,
   indicacion_medica_id: uuid.nullish(),

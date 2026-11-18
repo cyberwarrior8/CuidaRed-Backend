@@ -1,5 +1,38 @@
 # Cambios actuales
 
+## 17/11/2026 — Recuperación del envío de solicitudes
+
+- Se comprobó una interrupción de transporte entre Express y Supabase. El catálogo y la creación permiten un reintento limitado. La creación mantiene la huella y la base evita duplicar la solicitud y sus notificaciones.
+- El formulario conserva un identificador por intento. El servidor deriva el código con el secreto de seguimiento para recuperarlo al repetir el envío con los mismos datos. La migración `20261118024823_solicitudes_visita_reintentos.sql` quedó aplicada y verificada con `service_role` en una transacción revertida.
+- Se retiraron las instancias duplicadas de pruebas del backend. El arranque informa el puerto ocupado como error. La ruta pública local volvió a responder con la validación esperada.
+- Validación final con 1,089 pruebas del backend, 114 de acceso conectado y 113 de componentes. Compilación y comprobaciones de caché y apertura offline correctas. Las pruebas SQL verificaron el envío y la repetición con `service_role` y revirtieron los datos sintéticos.
+
+## 17/11/2026 — Visitas personales e institucionales
+
+- El formulario público distingue visitas a una persona mayor y visitas de instituciones o grupos. Recoge el nombre y tipo de entidad, el contacto responsable, el número de visitantes y la actividad o aporte previsto. La coordinación confirma la disponibilidad al revisar la solicitud.
+- El recorrido se distribuye en tres pasos cortos. En escritorio con ratón, los campos y botones tienen 40 px de alto, con texto de 14 px. En pantallas táctiles conservan 48 px y campos de 16 px. La tipografía sigue siendo Inter y los iconos son Lucide.
+- La aprobación institucional asigna al responsable y agenda el horario. El equipo puede registrar un informe general, adjuntar evidencias, sincronizar y cerrar la visita. Se conserva la observación posterior del visitante.
+- La migración `20261118014628_visitas_institucionales.sql` quedó aplicada y verificada en Supabase con datos sintéticos revertidos. También pasó la prueba de PostgreSQL local. Las visitas personales existentes conservan su recorrido.
+
+## 17/11/2026 — Activación del formulario conectado de visitas
+
+- `supabase/migrations/20261117035328_visitas_seguimiento_organizacional.sql` incorpora la compatibilidad con las fases ya alojadas y quedó registrada como aplicada en Supabase CuidaRed. Se verificaron las restricciones de expedientes retirados, sincronización y acceso a la cola.
+- `VISITAS_PUBLICAS_HABILITADAS` quedó habilitada en el entorno local. La portada conserva visible el formulario si no hay organizaciones operativas y deja el envío deshabilitado hasta que el catálogo tenga opciones. Pasos de activación y correo en [Visitas y seguimiento comunitario](docs/VISITAS-ORGANIZACION.md).
+- El catálogo reintenta una interrupción de Supabase. Al asignar responsables, el portal muestra cómo activar un perfil de cuidador y la API informa de ese requisito si el perfil deja de estar activo. El recorrido de visitas se verificó en el proyecto alojado con una transacción revertida, sin entregar correos.
+- El formulario público usa Inter, etiquetas de 14 px, campos y botones de 16 px y objetivos táctiles de 48 px. Las columnas responden al ancho del formulario. El acceso y el registro incluyen regreso a la sección de la portada de origen.
+- Validación funcional con 1,086 pruebas del backend, 110 de acceso conectado, 113 de componentes y 101 unitarias del frontend. La migración y las verificaciones de solicitudes, autorizaciones, evidencias y sincronización pasaron en PostgreSQL local. El correo real queda pendiente de `VISITAS_RESEND_API_KEY` y `VISITAS_CORREO_REMITENTE` del propietario.
+
+## 16/11/2026 — Seguimiento de visitas en organizaciones
+
+- El portal y la API distinguen solicitud pública, programación, autorización, reprogramación, registro de campo e historial. Las cuentas de tipo Familia conservan sus tareas de cuidado y quedan fuera del módulo institucional.
+- El responsable trabaja con capturas IndexedDB, sincronización UTC y evidencias privadas. Coordinación revisa evidencias y la agenda admite tareas vinculadas a una visita.
+- La migración de `supabase/migrations/` se verificó en PostgreSQL local con roles simulados. El backend entrega los avisos mediante una cola transaccional. Configuración y verificación en [Visitas y seguimiento comunitario](docs/VISITAS-ORGANIZACION.md).
+
+## 16/11/2026 — Visitas públicas desde la portada
+
+- `src/app.js`, `src/config/env.js`, `src/modules/publico/` y `src/lib/supabase-admin.js` incorporan el recorrido público activable por entorno. El visitante usa el código para consultar su solicitud y dejar una observación después del cierre por coordinación.
+- [Propuesta SQL y estado de aplicación](docs/CAMBIOS-SCHEMA-CUIDARED.md#visitas-públicas--16112026). Validado en un PostgreSQL aislado con datos sintéticos y verificación de permisos. Incorporado posteriormente a la migración de seguimiento organizacional.
+
 ## 09/11/2026 — Fases 2 a 4 aplicadas en Supabase
 
 - Se aplicaron los nueve bloques y se archivaron en `supabase/migrations/`. Los ajustes de compatibilidad conservaron los índices equivalentes, reemplazaron las reglas anteriores de prueba y horas de visita, y permitieron reconocer la PK original de `vinculo`.

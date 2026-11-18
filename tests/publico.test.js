@@ -4,6 +4,7 @@ import express from 'express';
 import { describe, expect, it, vi } from 'vitest';
 import request from 'supertest';
 import { createApp } from '../src/app.js';
+import { createAdminGateway } from '../src/lib/supabase-admin.js';
 import { createSupabaseGateway } from '../src/modules/access/supabase-gateway.js';
 import { createPublicoRouter } from '../src/modules/publico/publico-routes.js';
 import {
@@ -73,7 +74,10 @@ function setup(rpc = {}) {
     res.set('Cache-Control', 'no-store');
     next();
   });
-  app.use('/api/v1/publico', createPublicoRouter(deps));
+  app.use(
+    '/api/v1/publico',
+    createPublicoRouter(deps, (nombre, args) => deps.gateway.publico().rpc(nombre, args)),
+  );
   app.use(createApp(deps));
   app.use((error, _req, res, _next) => {
     res.status(error.status ?? 500).json({ error: { code: error.code, message: error.message } });
@@ -102,12 +106,105 @@ describe('código de seguimiento', () => {
   });
 });
 
+it('recibe una visita institucional sin persona destinataria y conserva los datos del grupo', async () => {
+  const { app, llamadas } = setup({
+    api_publico_crear_solicitud: () => ({
+      organizacion: 'Asilo de prueba',
+      estado: 'pendiente',
+      fecha_propuesta: '2026-12-01',
+      hora_propuesta: '10:30',
+    }),
+  });
+  const datos = solicitud({
+    tipo_visita: 'institucional',
+    entidad_visitante: 'Fundación de prueba',
+    tipo_entidad: 'fundacion',
+    cantidad_visitantes: 12,
+    aporte_previsto: 'Actividad musical y entrega de alimentos.',
+  });
+  delete datos.persona_a_visitar;
+  await request(app).post('/api/v1/publico/solicitudes-visita').send(datos).expect(201);
+  expect(llamadas[0].cuerpo.p_datos).toMatchObject({
+    tipo_visita: 'institucional',
+    entidad_visitante: 'Fundación de prueba',
+    cantidad_visitantes: 12,
+  });
+  expect(llamadas[0].cuerpo.p_datos.persona_a_visitar).toBeUndefined();
+  await request(app)
+    .post('/api/v1/publico/solicitudes-visita')
+    .send({ ...datos, cantidad_visitantes: 0 })
+    .expect(422);
+  await request(app)
+    .post('/api/v1/publico/solicitudes-visita')
+    .send({ ...datos, tipo_entidad: null })
+    .expect(422);
+});
+
 it('la aplicación de integración no monta solicitudes externas', async () => {
   const gateway = { publico: vi.fn() };
   const app = createApp({ env: { origins: [] }, gateway, audit: vi.fn() });
   await request(app).get('/api/v1/publico/organizaciones').expect(404);
   await request(app).post('/api/v1/publico/solicitudes-visita').send(solicitud()).expect(404);
   expect(gateway.publico).not.toHaveBeenCalled();
+});
+
+it('recupera el catálogo y reintenta una solicitud con la misma huella', async () => {
+  const falla = () => json({ code: 'PGRST003', message: 'detalle privado' }, 504);
+  const fetch = vi.fn().mockImplementationOnce(falla).mockResolvedValueOnce(json([]));
+  fetch.mockImplementationOnce(falla).mockResolvedValueOnce(json({ estado: 'pendiente' }));
+  const gateway = createAdminGateway({ ...env, SUPABASE_SECRET_KEY: 'sb_secret_test_only' }, fetch);
+  await expect(gateway.visitaPublicaRpc('api_publico_listar_organizaciones', {})).resolves.toEqual(
+    [],
+  );
+  const datos = { p_datos: { codigo_hash: 'c'.repeat(64) } };
+  await expect(gateway.visitaPublicaRpc('api_publico_crear_solicitud', datos)).resolves.toEqual({
+    estado: 'pendiente',
+  });
+  expect(fetch).toHaveBeenCalledTimes(4);
+  expect(fetch.mock.calls[2][1].body).toEqual(fetch.mock.calls[3][1].body);
+});
+
+it('conserva el código de seguimiento para el mismo intento y secreto', () => {
+  const id = '1c25d8b9-8ad8-4eaf-bfb4-41d82d4d4321';
+  const codigo = generarCodigoSeguimiento(id, 'secreto-sintetico-estable');
+  expect(codigo).toMatch(PATRON_CODIGO);
+  expect(generarCodigoSeguimiento(id, 'secreto-sintetico-estable')).toBe(codigo);
+  expect(generarCodigoSeguimiento(id, 'otro-secreto-sintetico')).not.toBe(codigo);
+});
+
+it('recupera el envío tras una interrupción de transporte', async () => {
+  const fetch = vi
+    .fn()
+    .mockRejectedValueOnce(new TypeError('Conexión interrumpida'))
+    .mockResolvedValueOnce(json({ estado: 'pendiente' }));
+  const gateway = createAdminGateway({ ...env, SUPABASE_SECRET_KEY: 'sb_secret_test_only' }, fetch);
+  await expect(
+    gateway.visitaPublicaRpc('api_publico_crear_solicitud', {
+      p_datos: { codigo_hash: 'c'.repeat(64) },
+    }),
+  ).resolves.toEqual({ estado: 'pendiente' });
+  expect(fetch).toHaveBeenCalledTimes(2);
+  expect(fetch.mock.calls[0][1].body).toEqual(fetch.mock.calls[1][1].body);
+});
+
+it('monta el catálogo público sin sesión cuando el entorno configura el cliente dedicado', async () => {
+  const visitaPublicaRpc = vi.fn(async () => [{ cuenta_id: 4, nombre: 'Organización de prueba' }]);
+  const authenticate = vi.fn();
+  const app = createApp({
+    env: {
+      origins: [],
+      VISITAS_PUBLICAS_HABILITADAS: true,
+      CODIGO_SEGUIMIENTO_SECRETO: 'x'.repeat(32),
+    },
+    gateway: { authenticate },
+    adminGateway: { visitaPublicaRpc },
+    audit: vi.fn(),
+  });
+  const res = await request(app).get('/api/v1/publico/organizaciones').expect(200);
+  expect(res.headers['cache-control']).toBe('no-store');
+  expect(res.body).toEqual({ data: [{ cuenta_id: 4, nombre: 'Organización de prueba' }] });
+  expect(visitaPublicaRpc).toHaveBeenCalledWith('api_publico_listar_organizaciones', {});
+  expect(authenticate).not.toHaveBeenCalled();
 });
 
 describe('GET /publico/organizaciones', () => {
@@ -366,7 +463,7 @@ describe('POST /publico/solicitudes-visita/consulta', () => {
 describe('POST /publico/solicitudes-visita/observacion', () => {
   it('el visitante deja su observación y la solicitud queda realizada', async () => {
     const { app, llamadas, audit } = setup({
-      api_publico_registrar_observacion: () =>
+      api_publico_registrar_observacion_posterior: () =>
         estadoRpc({ estado: 'realizada', observacion: 'Fue una visita muy agradable.' }),
     });
     const res = await request(app)
@@ -381,7 +478,9 @@ describe('POST /publico/solicitudes-visita/observacion', () => {
     expect(JSON.stringify(audit.mock.calls)).not.toMatch(/agradable|ABCD/);
   });
   it('código inválido o inexistente: 404 antes de validar la observación', async () => {
-    const { app, llamadas } = setup({ api_publico_registrar_observacion: () => rpcError('P0002') });
+    const { app, llamadas } = setup({
+      api_publico_registrar_observacion_posterior: () => rpcError('P0002'),
+    });
     const mal = await request(app)
       .post('/api/v1/publico/solicitudes-visita/observacion')
       .send({ codigo: 'nope', observacion: 'x' })
@@ -409,7 +508,8 @@ describe('POST /publico/solicitudes-visita/observacion', () => {
   });
   it('si la solicitud no está autorizada o la fecha aún no llega: 409 REQUEST_UNAVAILABLE', async () => {
     const { app } = setup({
-      api_publico_registrar_observacion: () => rpcError('P0001', 'CR_SOLICITUD_NO_DISPONIBLE'),
+      api_publico_registrar_observacion_posterior: () =>
+        rpcError('P0001', 'CR_SOLICITUD_NO_DISPONIBLE'),
     });
     const res = await request(app)
       .post('/api/v1/publico/solicitudes-visita/observacion')

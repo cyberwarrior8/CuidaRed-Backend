@@ -11,8 +11,13 @@ const schema = z.object({
   PWA_ORIGIN: z.url().optional(),
   // Requerida para el backoffice y las invitaciones de nuevos miembros. Solo en el servidor.
   SUPABASE_SECRET_KEY: z.string().startsWith('sb_secret_').optional(),
-  // Reservado para el borrador de solicitudes externas, que no se publica en esta integración.
+  VISITAS_PUBLICAS_HABILITADAS: z
+    .enum(['0', '1'])
+    .default('0')
+    .transform((valor) => valor === '1'),
   CODIGO_SEGUIMIENTO_SECRETO: z.string().min(32).optional(),
+  VISITAS_RESEND_API_KEY: z.string().startsWith('re_').optional(),
+  VISITAS_CORREO_REMITENTE: z.email().optional(),
 });
 
 export function readEnv(input) {
@@ -24,6 +29,25 @@ export function readEnv(input) {
     );
   }
   const env = result.data;
+  if (
+    (env.VISITAS_RESEND_API_KEY || env.VISITAS_CORREO_REMITENTE) &&
+    (!env.VISITAS_RESEND_API_KEY ||
+      !env.VISITAS_CORREO_REMITENTE ||
+      !env.PWA_ORIGIN ||
+      !env.SUPABASE_SECRET_KEY)
+  ) {
+    throw new Error(
+      'Configura VISITAS_RESEND_API_KEY, VISITAS_CORREO_REMITENTE, PWA_ORIGIN y SUPABASE_SECRET_KEY para enviar avisos.',
+    );
+  }
+  if (
+    env.VISITAS_PUBLICAS_HABILITADAS &&
+    (!env.SUPABASE_SECRET_KEY || !env.CODIGO_SEGUIMIENTO_SECRETO)
+  ) {
+    throw new Error(
+      'Configura SUPABASE_SECRET_KEY y CODIGO_SEGUIMIENTO_SECRETO para habilitar las visitas públicas.',
+    );
+  }
   const origins = env.FRONTEND_ORIGINS.split(',').map((v) => v.trim());
   for (const value of [env.SUPABASE_URL, ...origins, ...(env.PWA_ORIGIN ? [env.PWA_ORIGIN] : [])]) {
     const url = new URL(value);

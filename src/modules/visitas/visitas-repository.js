@@ -70,6 +70,15 @@ export function createVisitasRepository(rpc) {
         }),
       );
     },
+    async reprogramar(cuentaId, visitaId, datos) {
+      return objeto(
+        await rpc('api_reprogramar_visita', {
+          p_cuenta_id: cuentaId,
+          p_visita_id: visitaId,
+          p_datos: datos,
+        }),
+      );
+    },
     async listarSolicitudes(cuentaId, { filters, sort, limit, offset }) {
       return pagina(
         await rpc('api_listar_solicitudes_visita', {

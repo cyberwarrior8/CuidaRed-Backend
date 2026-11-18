@@ -6,6 +6,26 @@ import { AppError, unavailable } from './errors.js';
 
 const transientStatuses = new Set([0, 502, 503, 504, 520, 521, 522, 523, 524]);
 const transientCodes = new Set(['57014', '55P03', 'PGRST003']);
+const rpcVisitaPublica = new Set([
+  'api_publico_listar_organizaciones',
+  'api_publico_crear_solicitud',
+  'api_publico_consultar_solicitud',
+  'api_publico_registrar_observacion_posterior',
+  'api_visita_reclamar_avisos',
+  'api_visita_cerrar_aviso',
+]);
+
+function rpcError(name, result) {
+  const error = mapRpcError(result.error);
+  if (error.status === 503) {
+    error.dependency = 'supabase.' + name;
+    error.upstreamStatus = result.status;
+    if (typeof result.error.code === 'string' && /^[0-9A-Z]{5,12}$/.test(result.error.code)) {
+      error.upstreamCode = result.error.code;
+    }
+  }
+  return error;
+}
 
 export function createAdminGateway(env, fetchImpl = globalThis.fetch) {
   if (!env.SUPABASE_SECRET_KEY) return null;
@@ -39,17 +59,7 @@ export function createAdminGateway(env, fetchImpl = globalThis.fetch) {
         result = await attempt();
       }
     }
-    if (result.error) {
-      const error = mapRpcError(result.error);
-      if (error.status === 503) {
-        error.dependency = 'supabase.api_bo_' + name;
-        error.upstreamStatus = result.status;
-        if (typeof result.error.code === 'string' && /^[0-9A-Z]{5,12}$/.test(result.error.code)) {
-          error.upstreamCode = result.error.code;
-        }
-      }
-      throw error;
-    }
+    if (result.error) throw rpcError('api_bo_' + name, result);
     return result.data;
   };
 
@@ -104,6 +114,26 @@ export function createAdminGateway(env, fetchImpl = globalThis.fetch) {
       return { id: data.user.id };
     },
     backofficeRpc,
+    async visitaPublicaRpc(name, args) {
+      if (!rpcVisitaPublica.has(name)) throw new Error('RPC de visita pública inválida.');
+      const catalogo = name === 'api_publico_listar_organizaciones';
+      const reintentable = catalogo || name === 'api_publico_crear_solicitud';
+      const intentar = () => {
+        const rpc = admin.rpc(name, args).retry(false);
+        return reintentable ? rpc.abortSignal(AbortSignal.timeout(4500)) : rpc;
+      };
+      let result = await intentar();
+      if (
+        reintentable &&
+        result.error &&
+        (transientStatuses.has(result.status) || transientCodes.has(result.error.code))
+      ) {
+        await delay(200);
+        result = await intentar();
+      }
+      if (result.error) throw rpcError(name, result);
+      return result.data;
+    },
     async sendRecovery(email) {
       const { error } = await publicAuth.resetPasswordForEmail(email, {
         ...(env.PWA_ORIGIN ? { redirectTo: env.PWA_ORIGIN + '/restablecer' } : {}),

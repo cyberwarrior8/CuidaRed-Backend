@@ -25,6 +25,7 @@ import { createVisitasRouter } from './modules/visitas/visitas-routes.js';
 import { createBackofficeRouter } from './modules/backoffice/backoffice-routes.js';
 import { createLoggingMiddleware, createSystemLogger } from './lib/system-logger.js';
 import { auditAccess } from './modules/backoffice/backoffice-audit.js';
+import { createPublicoRouter } from './modules/publico/publico-routes.js';
 
 export function createApp({ env, gateway, audit, adminGateway = null, now = () => new Date() }) {
   const recordLog = createSystemLogger(adminGateway, audit);
@@ -81,10 +82,16 @@ export function createApp({ env, gateway, audit, adminGateway = null, now = () =
   // Módulo Backoffice exclusivo para administración interna de plataforma (BO-01, BO-02)
   app.use(['/api/admin', '/api/v1/backoffice'], createBackofficeRouter(deps));
   const api = express.Router();
-  // El flujo externo queda aislado hasta aprobar sus controles de seguridad.
-  api.use('/publico', (_req, _res, next) =>
-    next(new AppError(404, 'NOT_FOUND', 'Recurso no encontrado.')),
-  );
+  if (env.VISITAS_PUBLICAS_HABILITADAS && adminGateway && env.CODIGO_SEGUIMIENTO_SECRETO) {
+    api.use(
+      '/publico',
+      createPublicoRouter(deps, (name, args) => adminGateway.visitaPublicaRpc(name, args)),
+    );
+  } else {
+    api.use('/publico', (_req, _res, next) =>
+      next(new AppError(404, 'NOT_FOUND', 'Recurso no encontrado.')),
+    );
+  }
   api.use(requireSession(gateway));
   api.use(createAccessRouter(deps));
   api.use(createCatalogosRouter(deps));

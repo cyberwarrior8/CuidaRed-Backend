@@ -1,5 +1,7 @@
 # Contrato de Visitas y Solicitudes de Visita — fase 4, bloque 4a
 
+> Este documento conserva el contrato histórico de 4a. El [seguimiento organizacional](../VISITAS-ORGANIZACION.md) actualiza la disponibilidad por tipo de cuenta, las ventanas y la autorización, los avisos y la evidencia. Las visitas internas creadas desde el portal esperan la autorización. Los clientes históricos que omiten `autorizar` conservan la programación y autorización en una sola operación.
+
 ## Estado y alcance
 
 ID04; RF-02 y base de RF-10. Código, pruebas y **propuesta SQL sin aplicar** ([fase-4a-visitas.sql](../propuestas/fase-4a-visitas.sql)); no hay migración ni cambio de base de datos hasta recibir aprobación expresa. Incluye programación con autorización, inicio, registro de realización, cancelación, historial y solicitudes de visita de personas externas. Quedan fuera de este bloque las evidencias de visita (D13), la agenda y las tareas (4b) y la sincronización offline (4c), que se construye sobre `cuidared_interno.registrar_visita_realizada` y `cuidared_interno.iniciar_visita`.

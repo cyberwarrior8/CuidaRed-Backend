@@ -1,6 +1,6 @@
 /* Valida las propuestas SQL en un PostgreSQL LOCAL desechable · herramientas. © 2026 Equipo CuidaRed – INTEC. */
 /*
- * Uso:  node scripts/validar-propuestas-local.js [--conservar] [--solo=2b,3a|--solo=integracion]
+ * Uso:  node scripts/validar-propuestas-local.js [--conservar] [--solo=2b,3a|--solo=integracion|--solo=visitas]
  * Requiere `psql` en el PATH y un PostgreSQL local accesible con las variables estándar (PGHOST, PGUSER,
  * PGPASSWORD…; por defecto localhost/postgres). Crea la base `cuidared_validacion_local`, carga en orden:
  *   1. docs/verificacion/local/supabase-stub.sql  (esquema auth y roles simulados)
@@ -28,12 +28,17 @@ const base = `cuidared_validacion_local_${process.pid}`;
 const conservar = process.argv.includes('--conservar');
 // --solo=2b,3a: además de la base (2a y ayudas), carga solo las propuestas y pruebas con esos prefijos.
 const soloArg = process.argv.find((a) => a.startsWith('--solo='));
+const soloVisitas = soloArg === '--solo=visitas';
 const soloIntegracion = !soloArg || soloArg === '--solo=integracion';
 const solo =
   soloArg && !soloIntegracion ? ['2a', '00', ...soloArg.slice(7).split(',').filter(Boolean)] : null;
 const incluido = (codigo) => !solo || solo.some((p) => codigo.startsWith(p));
+const migracionVisitas = (nombre) =>
+  /^\d{14}_(visitas_(seguimiento_organizacional|institucionales)|solicitudes_visita_reintentos)\.sql$/.test(nombre);
 const esMigracionBase = (nombre) =>
-  nombre.endsWith('.sql') && !/^\d{14}_fase_(2[abc]|3[ab]|4[abcd])_/.test(nombre);
+  nombre.endsWith('.sql') &&
+  !migracionVisitas(nombre) &&
+  !/^\d{14}_fase_(2[abc]|3[ab]|4[abcd])_/.test(nombre);
 const esPruebaSeleccionada = (n) =>
   /^pruebas-.*\.sql$/.test(n) &&
   (soloIntegracion
@@ -90,23 +95,41 @@ try {
     join(raiz, 'docs/verificacion/local/trigger-perfil-stub.sql'),
     'trigger de perfil (stub)',
   );
-  // Las fases 2 a 4 se prueban desde las propuestas, aunque sus versiones aplicadas también estén archivadas.
-  for (const f of ordenados(join(raiz, 'supabase/migrations'), esMigracionBase))
-    ejecutarArchivo(f, f.slice(raiz.length));
-  if (soloIntegracion) {
+  const migraciones = join(raiz, 'supabase/migrations');
+  const pruebas = join(raiz, 'docs/verificacion/local');
+  if (soloVisitas) {
+    const fases = (n) => /^\d{14}_fase_[1234].*\.sql$/.test(n);
+    for (const f of ordenados(migraciones, fases)) ejecutarArchivo(f, f.slice(raiz.length));
     ejecutarArchivo(
-      join(raiz, 'docs/verificacion/local/datos-previos-integracion.sql'),
-      'datos previos de integración',
+      join(pruebas, 'visitas-cierre-stub.sql'),
+      'restricción de expedientes retirados',
     );
-  }
-  for (const f of ordenados(
-    join(raiz, 'docs/propuestas'),
-    (n) => /^fase-(2[abc]|3[ab]|4[abcd])-.*\.sql$/.test(n) && incluido(n.slice(5)),
-  )) {
-    ejecutarArchivo(f, f.slice(raiz.length));
-  }
-  for (const f of ordenados(join(raiz, 'docs/verificacion/local'), esPruebaSeleccionada)) {
-    ejecutarArchivo(f, f.slice(raiz.length));
+    for (const f of ordenados(migraciones, migracionVisitas))
+      ejecutarArchivo(f, f.slice(raiz.length));
+    for (const n of [
+      'pruebas-00-ayudas.sql',
+      'pruebas-visitas-publicas.sql',
+      'pruebas-visitas-seguimiento.sql',
+      'pruebas-visitas-institucionales.sql',
+    ]) {
+      ejecutarArchivo(join(pruebas, n), n);
+    }
+  } else {
+    // Las fases 2 a 4 se prueban desde las propuestas, aunque sus versiones también estén archivadas.
+    for (const f of ordenados(migraciones, esMigracionBase))
+      ejecutarArchivo(f, f.slice(raiz.length));
+    if (soloIntegracion)
+      ejecutarArchivo(
+        join(pruebas, 'datos-previos-integracion.sql'),
+        'datos previos de integración',
+      );
+    for (const f of ordenados(
+      join(raiz, 'docs/propuestas'),
+      (n) => /^fase-(2[abc]|3[ab]|4[abcd])-.*\.sql$/.test(n) && incluido(n.slice(5)),
+    ))
+      ejecutarArchivo(f, f.slice(raiz.length));
+    for (const f of ordenados(pruebas, esPruebaSeleccionada))
+      ejecutarArchivo(f, f.slice(raiz.length));
   }
   console.log('Validación local completada sin errores.');
 } catch {

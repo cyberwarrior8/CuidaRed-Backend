@@ -159,7 +159,9 @@ export const ACCIONES_SIN_ACCESO_OPERATIVO = ['cuenta:suscripcion'];
 
 export function permisosDe(rol, tipo) {
   if (!ROLES_POR_TIPO[tipo]?.includes(rol)) return [];
-  return [...new Set([...(MATRIZ[rol] ?? []), ...(AJUSTES_POR_TIPO[tipo]?.[rol] ?? [])])];
+  return [...new Set([...(MATRIZ[rol] ?? []), ...(AJUSTES_POR_TIPO[tipo]?.[rol] ?? [])])].filter(
+    (accion) => tipo !== 'familia' || !accion.startsWith('visitas:'),
+  );
 }
 
 /** Filas (rol, tipo, acción) para sembrar cuidared.rol_permiso. */
