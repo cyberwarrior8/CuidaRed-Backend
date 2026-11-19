@@ -1,24 +1,38 @@
 /* Configuración validada al iniciar · infraestructura. © 2026 Equipo CuidaRed – INTEC. */
 import { z } from 'zod';
+import { esClavePublicaPush } from '../lib/web-push-validation.js';
 
-const schema = z.object({
-  NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
-  PORT: z.coerce.number().int().min(1).max(65535).default(3000),
-  SUPABASE_URL: z.url(),
-  SUPABASE_PUBLISHABLE_KEY: z.string().startsWith('sb_publishable_'),
-  FRONTEND_ORIGINS: z.string().min(1),
-  TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(10).default(0),
-  PWA_ORIGIN: z.url().optional(),
-  // Requerida para el backoffice y las invitaciones de nuevos miembros. Solo en el servidor.
-  SUPABASE_SECRET_KEY: z.string().startsWith('sb_secret_').optional(),
-  VISITAS_PUBLICAS_HABILITADAS: z
-    .enum(['0', '1'])
-    .default('0')
-    .transform((valor) => valor === '1'),
-  CODIGO_SEGUIMIENTO_SECRETO: z.string().min(32).optional(),
-  VISITAS_RESEND_API_KEY: z.string().startsWith('re_').optional(),
-  VISITAS_CORREO_REMITENTE: z.email().optional(),
-});
+const schema = z
+  .object({
+    NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+    PORT: z.coerce.number().int().min(1).max(65535).default(3000),
+    SUPABASE_URL: z.url(),
+    SUPABASE_PUBLISHABLE_KEY: z.string().startsWith('sb_publishable_'),
+    FRONTEND_ORIGINS: z.string().min(1),
+    TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(10).default(0),
+    PWA_ORIGIN: z.url().optional(),
+    BROWSER_SESSION_KEY: z
+      .string()
+      .regex(/^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$/)
+      .optional(),
+    // Backoffice, invitaciones y Web Push. Solo en el servidor.
+    SUPABASE_SECRET_KEY: z.string().startsWith('sb_secret_').optional(),
+    VISITAS_PUBLICAS_HABILITADAS: z
+      .enum(['0', '1'])
+      .default('0')
+      .transform((valor) => valor === '1'),
+    VISITAS_RESEND_API_KEY: z.string().startsWith('re_').optional(),
+    VISITAS_CORREO_REMITENTE: z.email().optional(),
+    CODIGO_SEGUIMIENTO_SECRETO: z.string().min(32).optional(),
+    WEB_PUSH_ENABLED: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((valor) => valor === 'true'),
+    WEB_PUSH_PUBLIC_KEY: z.string().refine(esClavePublicaPush).optional(),
+  })
+  .refine((env) => !env.WEB_PUSH_ENABLED || !!env.WEB_PUSH_PUBLIC_KEY, {
+    path: ['WEB_PUSH_PUBLIC_KEY'],
+  });
 
 export function readEnv(input) {
   const result = schema.safeParse(input);

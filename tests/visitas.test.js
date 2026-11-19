@@ -198,6 +198,36 @@ describe('POST /visitas: programar y autorizar', () => {
     participante_ids: [ID.participante1],
     ...extra,
   });
+  it('envía la recurrencia semanal como una sola solicitud y rechaza días repetidos', async () => {
+    const { api, rpcLlamadas } = setup({
+      rpc: {
+        api_programar_visitas_recurrentes: () => ({ serie_id: ID.visita, visitas: [visita()] }),
+      },
+    });
+    const repeticion = { frecuencia: 'semanal', hasta: '2026-11-30', dias_semana: [1, 7] };
+    await api('post', '/visitas/recurrentes').send(cuerpo({ repeticion })).expect(201);
+    expect(rpcLlamadas('api_programar_visitas_recurrentes')[0].cuerpo).toEqual({
+      p_cuenta_id: '7',
+      p_datos: cuerpo({ repeticion }),
+    });
+    await api('post', '/visitas/recurrentes')
+      .send(cuerpo({ repeticion: { ...repeticion, dias_semana: [1, 1] } }))
+      .expect(422);
+    await api('post', '/visitas/recurrentes')
+      .send(cuerpo({ repeticion, autorizar: false }))
+      .expect(422);
+    expect(rpcLlamadas('api_programar_visitas_recurrentes')).toHaveLength(1);
+  });
+  it('bloquea Visitas y Solicitudes en Familia incluso con permisos anteriores al cambio', async () => {
+    const { api, llamadas } = setup({
+      tipo: 'familia',
+      permisos: permisosDe('coordinador', 'organizacion'),
+    });
+    await api('get', '/visitas').expect(403);
+    await api('post', '/visitas').send(cuerpo()).expect(403);
+    await api('get', '/solicitudes-visita').expect(403);
+    expect(llamadas.some(({ nombre }) => /visita/.test(nombre))).toBe(false);
+  });
   it('un usuario principal programa: 201 y la RPC recibe solo el cuerpo validado', async () => {
     const { api, rpcLlamadas, audit } = setup({
       rpc: { api_programar_visita: () => visita({ estado: 'programada' }) },

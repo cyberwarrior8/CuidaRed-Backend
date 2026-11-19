@@ -830,6 +830,10 @@ describe('Contrato entre la API y la propuesta SQL', () => {
   });
 
   it('los códigos CR_* que lanza el SQL están registrados o son transversales', () => {
+    const correcciones = readFileSync(
+      new URL('../docs/propuestas/cierre-2-4-correcciones.sql', import.meta.url),
+      'utf8',
+    );
     const usados = new Set(
       [...sql.matchAll(/raise exception '(CR_[A-Z0-9_]+)'/g)].map((m) => m[1]),
     );
@@ -838,7 +842,10 @@ describe('Contrato entre la API y la propuesta SQL', () => {
       expect(businessError(codigo), codigo).toBeDefined();
     }
     for (const codigo of Object.keys(ERRORES_SEGUIMIENTO))
-      expect(usados.has(codigo), codigo).toBe(true);
+      expect(
+        usados.has(codigo) || correcciones.includes(`raise exception '${codigo}'`),
+        codigo,
+      ).toBe(true);
   });
 
   it('el cuestionario del servidor y el de la API declaran las mismas preguntas', async () => {

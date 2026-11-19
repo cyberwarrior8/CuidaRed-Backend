@@ -187,5 +187,7 @@ const suscripcion = z.object({
  */
 export function suscripcionDto(crudo, { conPlanes }) {
   const { planes, ...resto } = leer(suscripcion, crudo);
+  if (!resto.acceso_operativo && ['prueba', 'activa'].includes(resto.estado))
+    resto.estado = 'vencida';
   return conPlanes && planes ? { ...resto, planes } : resto;
 }

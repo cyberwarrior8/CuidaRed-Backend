@@ -10,8 +10,13 @@ import cors from 'cors';
 import { rateLimit } from 'express-rate-limit';
 import { AppError } from './lib/errors.js';
 import { createAccessRouter } from './modules/access/access-routes.js';
+import {
+  browserSessionPath,
+  createBrowserSessionRouter,
+} from './modules/access/browser-session.js';
 import { requireSession } from './modules/access/require-session.js';
 import { createAgendaRouter } from './modules/agenda/agenda-routes.js';
+import { createAlertasRouter } from './modules/alertas/alertas-routes.js';
 import { createCatalogosRouter } from './modules/catalogos/catalogos-routes.js';
 import { createCuentaRouter } from './modules/cuentas/cuenta-routes.js';
 import { createCuentasRouter } from './modules/cuentas/cuentas-routes.js';
@@ -19,9 +24,11 @@ import { requireCuenta } from './modules/cuentas/require-cuenta.js';
 import { createEnvejecientesRouter } from './modules/envejecientes/envejecientes-routes.js';
 import { createMiembrosRouter } from './modules/miembros/miembros-routes.js';
 import { createMisMembresiasRouter } from './modules/miembros/mis-membresias-routes.js';
+import { createNecesidadesRouter } from './modules/necesidades/necesidades-routes.js';
 import { createSeguimientoRouter } from './modules/seguimiento/seguimiento-routes.js';
 import { createSyncRouter } from './modules/sync/sync-routes.js';
 import { createVisitasRouter } from './modules/visitas/visitas-routes.js';
+import { createWebPushRouter } from './modules/web-push/web-push-routes.js';
 import { createBackofficeRouter } from './modules/backoffice/backoffice-routes.js';
 import { createLoggingMiddleware, createSystemLogger } from './lib/system-logger.js';
 import { auditAccess } from './modules/backoffice/backoffice-audit.js';
@@ -53,16 +60,18 @@ export function createApp({ env, gateway, audit, adminGateway = null, now = () =
   app.use(createLoggingMiddleware(recordLog));
   app.use(helmet());
   app.use(
-    cors({
-      origin(origin, callback) {
-        if (!origin || env.origins.includes(origin)) return callback(null, true);
-        callback(new AppError(403, 'ORIGIN_DENIED', 'Origen no permitido.'));
-      },
-      methods: ['GET', 'POST', 'PATCH', 'OPTIONS'],
-      allowedHeaders: ['Authorization', 'Content-Type', 'X-Change-Reason'],
-      exposedHeaders: ['X-Request-Id'],
-      credentials: false,
-    }),
+    cors((req, callback) =>
+      callback(null, {
+        origin(origin, callback) {
+          if (!origin || env.origins.includes(origin)) return callback(null, true);
+          callback(new AppError(403, 'ORIGIN_DENIED', 'Origen no permitido.'));
+        },
+        methods: ['GET', 'POST', 'PATCH', 'OPTIONS'],
+        allowedHeaders: ['Authorization', 'Content-Type', 'X-Change-Reason'],
+        exposedHeaders: ['X-Request-Id'],
+        credentials: req.path.startsWith(`/api/v1${browserSessionPath}/`),
+      }),
+    ),
   );
   app.use(
     rateLimit({
@@ -74,7 +83,7 @@ export function createApp({ env, gateway, audit, adminGateway = null, now = () =
         next(new AppError(429, 'RATE_LIMITED', 'Espera un momento antes de intentar de nuevo.')),
     }),
   );
-  // Un lote de sync (hasta 25 visitas con observaciones) no cabe en 16 kB; solo esa ruta admite más. Si el analizador
+  // Un lote de sync con observaciones y necesidades puede superar 16 kB; solo esa ruta admite más. Si el analizador
   // de la ruta ya leyó el cuerpo, el global no vuelve a leerlo.
   app.use('/api/v1/cuentas/:cuentaId/sync', express.json({ limit: '256kb', strict: true }));
   app.use(express.json({ limit: '16kb', strict: true }));
@@ -92,11 +101,13 @@ export function createApp({ env, gateway, audit, adminGateway = null, now = () =
       next(new AppError(404, 'NOT_FOUND', 'Recurso no encontrado.')),
     );
   }
+  api.use(browserSessionPath, createBrowserSessionRouter(deps));
   api.use(requireSession(gateway));
   api.use(createAccessRouter(deps));
   api.use(createCatalogosRouter(deps));
   api.use(createCuentasRouter(deps));
   api.use(createMisMembresiasRouter(deps));
+  api.use('/notificaciones-push', createWebPushRouter(deps));
   // Rutas de una cuenta: el contexto (rol, permisos, vigencia) se resuelve una vez y lo usan todos los módulos.
   const enCuenta = express.Router({ mergeParams: true });
   enCuenta.use(requireCuenta());
@@ -106,6 +117,8 @@ export function createApp({ env, gateway, audit, adminGateway = null, now = () =
   enCuenta.use(createSeguimientoRouter(deps));
   enCuenta.use(createVisitasRouter(deps));
   enCuenta.use(createAgendaRouter(deps));
+  enCuenta.use(createNecesidadesRouter(deps));
+  enCuenta.use(createAlertasRouter(deps));
   enCuenta.use(createSyncRouter(deps));
   api.use('/cuentas/:cuentaId', enCuenta);
   app.use('/api/v1', api);

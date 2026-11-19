@@ -93,13 +93,20 @@ export function createMiembrosRepository({ rpc }) {
         }),
       );
     },
-    async guardarCuidador(cuentaId, membresiaId, { tipo_cuidado_id, cuidador_independiente }) {
+    async guardarCuidador(
+      cuentaId,
+      membresiaId,
+      { tipo_cuidado_id, cuidador_independiente, conservar_empleador },
+    ) {
       return readCuidador(
         await rpc('api_guardar_cuidador_miembro', {
           p_cuenta_id: cuentaId,
           p_membresia_id: membresiaId,
           p_tipo_cuidado_id: tipo_cuidado_id,
           p_cuidador_independiente: cuidador_independiente,
+          ...(conservar_empleador === undefined
+            ? {}
+            : { p_conservar_empleador: conservar_empleador }),
         }),
       );
     },

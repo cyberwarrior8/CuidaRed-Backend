@@ -2,7 +2,7 @@
 
 ## Alcance y estado
 
-ID03; RF-01, RF-13 (lectura por alcance), RF-17; CR-158 (consentimiento informado, Ley 172-13), CR-172 (baja), CR-162. Implementado en `src/modules/envejecientes/`. Persistencia: **propuesta sin aplicar** en [`fase-3a-envejecientes.sql`](../propuestas/fase-3a-envejecientes.sql), sobre [`fase-2a-base.sql`](../propuestas/fase-2a-base.sql) (`exigir`, `alcanza_envejeciente`, `limites`, `hoy`). No es una migración ni se aplicó a ninguna base.
+ID03; RF-01, RF-13 (lectura por alcance), RF-17; CR-158, CR-172 y CR-162. Implementado en `src/modules/envejecientes/`. El bloque 3a está aplicado. El retiro se define en la [propuesta de cierre](../CAMBIOS-SCHEMA-CUIDARED.md#cuidared-008--correcciones-de-las-fases-2-a-4).
 
 Las decisiones marcadas **Propuesta técnica (Dxx)** eligen lo más simple compatible con las Reglas de Negocio V2; siguen abiertas en CONTEXTO §15.2 hasta que el usuario las confirme. La **cédula obligatoria y única en toda la plataforma** (D09) está confirmada desde el 24/10/2026.
 
@@ -206,3 +206,9 @@ Pendiente de integración frontend: reemplazar los servicios locales de `adultos
 - `npm test`: `tests/envejecientes.test.js` con gateway simulado (permisos por rol, validación estricta, cuenta tomada de la ruta, proyección por nivel, errores públicos, auditoría sin datos personales).
 - `node scripts/validar-propuestas-local.js --solo=3a` en un PostgreSQL local desechable: `pruebas-3a-esquema.sql`, `pruebas-3a-adultos.sql` (alta, límite, cédula duplicada entre cuentas, alcance por rol, aislamiento), `pruebas-3a-estado.sql` (cascada y transiciones) y `pruebas-3a-contactos.sql`. No certifica RLS ni Auth de Supabase.
 - Las asignaciones de las pruebas SQL se insertan en `cuidared.vinculo` como superusuario: las construye el bloque 3b.
+
+## Retiro del consentimiento
+
+`POST /cuentas/:cuentaId/envejecientes/:envejecienteId/consentimiento/retirar` exige `adultos:desactivar`. Recibe un `motivo` opcional de 3 a 200 caracteres y devuelve 204. El expediente queda fuera de las consultas operativas, se cancelan las visitas y tareas operativas abiertas y se conserva el consentimiento original.
+
+`GET /cuentas/:cuentaId/consentimientos-retirados` exige el mismo permiso, aplica CR-162 y permite ordenar por `fecha`. Devuelve ID del expediente, nombre, fecha, actor y motivo. Cada eliminación de datos y archivos pasa por revisión manual.

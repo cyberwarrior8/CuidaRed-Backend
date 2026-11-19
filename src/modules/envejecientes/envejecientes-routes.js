@@ -2,8 +2,8 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { isBigintId } from '../../lib/bigint-id.js';
-import { paginatedResponse } from '../../lib/collection-query.js';
-import { AppError } from '../../lib/errors.js';
+import { createCollectionQuery, paginatedResponse } from '../../lib/collection-query.js';
+import { AppError, unavailable } from '../../lib/errors.js';
 import { requirePermiso } from '../cuentas/require-cuenta.js';
 import './envejecientes-errors.js';
 import { envejecientesRepository } from './envejecientes-repository.js';
@@ -24,6 +24,24 @@ import {
 } from './envejecientes-schema.js';
 
 const notFound = () => new AppError(404, 'NOT_FOUND', 'Recurso no encontrado.');
+const retiroSchema = z.strictObject({ motivo: z.string().trim().min(3).max(200).optional() });
+const retirosQuery = createCollectionQuery({
+  sortableFields: ['fecha'],
+  defaultSort: '-fecha',
+  tieBreaker: 'fecha',
+});
+const archivoRetiros = z.object({
+  total: z.int().min(0),
+  items: z.array(
+    z.object({
+      envejeciente_id: z.uuid(),
+      nombre: z.string(),
+      fecha: z.iso.datetime({ offset: true }),
+      motivo: z.string().nullable(),
+      actor: z.string().nullable(),
+    }),
+  ),
+});
 
 function parse(schema, body) {
   const result = schema.safeParse(body);
@@ -80,6 +98,23 @@ export function createEnvejecientesRouter({ audit }) {
     res.status(201).json({ data: serializeAdulto(fila, nivelDe(res.locals.cuenta)) });
   });
 
+  router.get(
+    '/consentimientos-retirados',
+    requirePermiso('adultos:desactivar'),
+    async (req, res) => {
+      const query = retirosQuery(req.query);
+      const raw = await res.locals.access.repository.rpc('api_consentimientos_retirados', {
+        p_cuenta_id: cuentaId(res),
+        p_limite: query.limit,
+        p_offset: query.offset,
+        p_desc: query.sort[0].direction === 'desc',
+      });
+      const archivo = archivoRetiros.safeParse(raw);
+      if (!archivo.success) throw unavailable();
+      res.json(paginatedResponse(archivo.data.items, { ...query, total: archivo.data.total }));
+    },
+  );
+
   router.get('/envejecientes/:envejecienteId', requirePermiso('adultos:ver'), async (req, res) => {
     const fila = await repo(res).ver(cuentaId(res), adultoId(req));
     log(res, 'adulto.viewed');
@@ -109,6 +144,22 @@ export function createEnvejecientesRouter({ audit }) {
       const fila = await repo(res).cambiarEstado(cuentaId(res), id, estado, motivo);
       log(res, 'adulto.state_changed');
       res.json({ data: serializeEstado(fila) });
+    },
+  );
+
+  router.post(
+    '/envejecientes/:envejecienteId/consentimiento/retirar',
+    requirePermiso('adultos:desactivar'),
+    async (req, res) => {
+      const id = adultoId(req);
+      const { motivo } = parse(retiroSchema, req.body ?? {});
+      await res.locals.access.repository.rpc('api_retirar_consentimiento', {
+        p_cuenta_id: cuentaId(res),
+        p_envejeciente_id: id,
+        p_motivo: motivo ?? null,
+      });
+      log(res, 'adulto.consent_withdrawn');
+      res.status(204).end();
     },
   );
 

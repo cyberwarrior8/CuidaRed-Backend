@@ -140,6 +140,94 @@ Detalle: [revisión de nombres](catalogos/REVISION-NOMBRES-ONE-2021.md) e [infor
 
 **Configuración de Auth.** Con aprobación separada, se habilitó el registro por correo en Supabase y se guardó la plantilla «Confirma tu correo en CuidaRed» con `{{ .Token }}`. El panel confirmó el requisito de confirmar el correo, códigos de 6 dígitos y vigencia de 900 segundos. La comprobación de entrega del correo corresponde a la prueba desde la aplicación.
 
+## CUIDARED-008 — Correcciones de las fases 2 a 4
+
+**Estado.** El usuario aprobó la aplicación el 13/11/2026. Los cinco bloques se aplicaron en una sola transacción en Supabase CuidaRed. La [migración aplicada](../supabase/migrations/20261114022629_cierre_fases_2_a_4_cuidared_008.sql) quedó registrada como `20261114022629` (UTC).
+
+### Tabla nueva en `cuidared`
+
+| Tabla | Campos |
+| --- | --- |
+| `evidencia_indicacion` | `evidencia_indicacion_id uuid` PK, `indicacion_medica_id uuid` FK, `registrada_por uuid` FK a usuario, `ruta text` única, `nombre_archivo text`, `tipo_mime text`, `tamano_bytes integer`, `fecha_registro timestamptz`. Todos obligatorios. RLS y acceso por RPC. |
+
+### Tablas existentes
+
+| Tabla | Cambio |
+| --- | --- |
+| `envejeciente` | `consentimiento_retirado_en timestamptz`, `consentimiento_retirado_por uuid` FK y `consentimiento_retiro_motivo text` opcional. Restricción de coherencia e índice parcial por cuenta y fecha de retiro. |
+| `visita` | `serie_id uuid` para las ocurrencias nuevas y un índice parcial por cuenta/serie. |
+| `riesgo` | Cinco factores de V2 por nombre y código. Se conserva el catálogo previo. |
+| `auditoria` | Nuevos eventos para evaluación, solicitud y evidencias mediante disparadores que guardan la referencia de la fila y su contenedor. |
+
+### Funciones, disparadores y orden de aplicación
+
+1. [Correcciones](propuestas/cierre-2-4-correcciones.sql). Revisa alcance, candidatos, asignaciones y registro de visitas (incluye sincronización). Agrega una variante de `api_guardar_cuidador_miembro` que permite conservar el empleador global. La firma previa sigue siendo válida.
+2. [Retiro de consentimiento](propuestas/cierre-2-4-consentimiento.sql). Añade las RPC `api_retirar_consentimiento` y `api_consentimientos_retirados`. Actualiza el alcance de expedientes, visitas e historial y el acceso a tareas. Los disparadores `envejeciente_retiro_inmutable` y `tarea_requiere_consentimiento` protegen el retiro y el trabajo nuevo. La misma transacción cancela las visitas y tareas operativas abiertas y cierra las alertas abiertas. Una visita grupal vinculada al expediente retirado queda fuera del historial operativo de todos sus participantes y se conserva para custodia.
+3. [Series de visitas](propuestas/cierre-2-4-visitas-recurrentes.sql). `api_programar_visitas_recurrentes` vuelve a comprobar vigencia, funcionalidad del plan y autorización de cada visita. Si falla una ocurrencia, se revierte la serie.
+4. [Adjuntos de indicaciones](propuestas/cierre-2-4-indicaciones-adjuntos.sql). RPC para preparar subida, registrar y listar. Dos políticas nuevas en `storage.objects` basadas en `cuidared_storage.evidencia_indicacion_permitida`. Reutiliza el bucket privado `evidencias` con 5 MiB y JPG, PNG, WebP o PDF.
+5. [Auditoría](propuestas/cierre-2-4-auditoria.sql). `api_auditoria_cuenta` consulta los cambios confirmados cuya cuenta es verificable. `trg_auditoria_referencia` se instala en `evaluacion_riesgo`, `solicitud_visita`, `evidencia_visita` y `evidencia_indicacion`. La respuesta omite los valores de las filas. Los eventos globales que carecen de cuenta verificable y las peticiones técnicas rechazadas quedan fuera de esta consulta.
+
+**Conservación.** Mantener el consentimiento original, la constancia, el expediente y los archivos. Revisar caso por caso cualquier eliminación, incluida la de archivos que quedaron sin registrar tras una subida interrumpida. Las URL privadas emitidas antes de un retiro vencen en un máximo de cinco minutos. Las solicitudes de nuevas URLs vuelven a comprobar permisos. Si hay que corregir un despliegue, preparar una migración que conserve las constancias, series y referencias de archivos que ya se hayan creado.
+
+**Verificación.** El [juego local de cierre](verificacion/local/pruebas-cierre-2-4.sql) pasó en PostgreSQL desechable con Auth y Storage simulados. En Supabase se confirmaron cinco factores, cuatro columnas, seis disparadores y dos políticas de Storage. La tabla nueva tiene RLS y solo se consulta por RPC. Las siete RPC nuevas verificadas exigen autenticación y las RPC públicas siguen revocadas. El bucket es privado y conserva el límite de 5 MiB. El historial remoto registró la huella MD5 `b45f62359b874fd7f833ff984cea3069` sobre las sentencias que conserva Supabase. Queda por verificar el envío de correo y la subida y descarga real de archivos.
+
+## CUIDARED-009 — Necesidades y alertas
+
+**Estado.** Aplicado el 15/11/2026 al proyecto Supabase CuidaRed, con aprobación expresa del usuario. La revisión previa encontró los catálogos de Necesidades vacíos, el tipo `ausencia_visitas` existente y automatismos antiguos para alertas de riesgo, necesidades y visitas.
+
+### Tablas y campos de `cuidared`
+
+| Tabla | Cambios propuestos |
+| --- | --- |
+| `tipo_necesidad` y `necesidad` | Añade `tipo_necesidad.codigo text` único y siembra cinco tipos con su ítem general. Conserva el catálogo previo y comprueba que cada ítem general coincide con su tipo. |
+| `envejeciente_necesidad` | Añade `registrado_por uuid` y `resuelto_por uuid` con referencias a `usuario`. Amplía `cantidad` de `numeric(10,2)` a `numeric` sin escala fija y `unidad_medida` de `varchar(30)` a `varchar(64)`, según la decisión del 15/11/2026. Los registros previos conservan sus valores. Habilita RLS, agrega un índice por expediente y fecha y garantiza que `fecha_actualizacion` avance en cada cambio para comparar versiones al sincronizar. |
+| `necesidad_evento` (nueva) | `necesidad_evento_id uuid` PK, `envejeciente_necesidad_id uuid` FK, `usuario_id uuid` FK, `fecha timestamptz`, `estado_anterior text`, `estado text`, `prioridad_anterior_id smallint` y `prioridad_id smallint` FK, `responsable_anterior_id uuid` y `responsable_id uuid` FK, `motivo text`. RLS e índice por ocurrencia y fecha. |
+| `alerta_envejeciente` | Añade `fuente_riesgo_id bigint`, `fuente_necesidad_id uuid`, `fuente_visita_id uuid` (FK compuesta con adulto), `fuente_perfil_id uuid`, `cierre_automatico boolean` y `sin_fuente_historica boolean`. Agrega RLS, verificación de fuente y restricciones para el cierre. Cuatro índices únicos parciales reemplazan la deduplicación antigua por tipo. |
+| `tipo_alerta` y `notificacion` | Incorpora los códigos de alerta vigentes, conserva el tipo de seguimiento y reutiliza un aviso por destinatario. RLS e índice de bandeja para notificaciones de alerta. |
+
+### Funciones y orden
+
+1. [Fase 5, necesidades](propuestas/fase-5-necesidades.sql). RPC de listado, detalle, historial, candidatos, registro, actualización y estado. `necesidad_registrar_evento` registra las operaciones de la ocurrencia. `trg_envejeciente_necesidad_fecha_actualizacion` usa la función interna `necesidad_fijar_version` para producir versiones distintas incluso cuando coinciden los milisegundos. El cambio de tipos restaura la vista `v_necesidades_activas` con su definición y `security_invoker`, y reinstala el disparador anterior de alertas hasta que el bloque 6b lo sustituye. Se conserva el control de cupos instalado.
+2. [Fase 5, sincronización](propuestas/fase-5-sync-necesidades.sql). Extiende `api_sync_aplicar_operacion` y `api_sync_obtener_operacion`. `sync_necesidad` aplica idempotencia, versión y permisos con los mismos validadores del flujo en línea. Reutiliza `operacion_sync`.
+3. [Fase 6a, consultas](propuestas/fase-6a-alertas-consulta.sql). RPC de listado, detalle, gestión, casos prioritarios y lectura de avisos. Los casos agrupan por adulto y mantienen las fuentes individuales.
+4. [Fase 6b, motor](propuestas/fase-6b-alertas-motor.sql). Reemplaza los disparadores antiguos, revoca acceso a generadores antiguos y agrega comprobación de fuente, generación por riesgo y medicamentos, y avisos internos sin datos de salud. `alertas_evaluar_diario` reconcilia datos existentes y ventanas sin visita.
+5. [Fase 6z, auditoría](propuestas/fase-6z-auditoria-necesidades-alertas.sql). Extiende `api_auditoria_cuenta` a las ocurrencias y a las alertas. Reemplaza `trg_envejeciente_necesidad_auditoria` y `trg_alerta_envejeciente_auditoria` para guardar referencias a las filas y al expediente mediante `trg_auditoria_referencia`. Se conservan las entradas históricas y los disparadores de Backoffice.
+
+### Aplicación y verificación en Supabase
+
+- [Migración `20261115231642`](../supabase/migrations/20261115231642_fases_5_y_6_cuidared_009.sql). Reúne los cinco bloques en una transacción. Se verificaron las cinco categorías cargadas y RLS en `envejeciente_necesidad`, `necesidad_evento`, `alerta_envejeciente` y `notificacion`.
+- [Prueba transaccional](verificacion/fases-5-y-6-supabase.sql). Con datos sintéticos y sesión simulada, comprobó el alta sincronizada y su reintento idempotente, la conservación de `0.004` y una unidad de 64 caracteres, las alertas de riesgo y medicamentos agrupadas por adulto, la lectura del aviso, el cierre automático y la auditoría por referencia. Se revirtieron las filas de prueba y se confirmó que la identidad temporal, su necesidad y sus eventos no quedaron en la base.
+- [Migración `20261115231810`](../supabase/migrations/20261115231810_cron_alertas_cuidared_009.sql). Aplicó por separado la [evaluación inicial y programación diaria](propuestas/operacion-fase-6-cron.sql). La evaluación inicial dejó una alerta y un aviso para datos existentes. El trabajo `cuidared_alertas_diarias` quedó activo con `5 4 * * *` en GMT, a las 00:05 de República Dominicana. Al verificar el despliegue, aún no había ocurrido la primera ejecución programada.
+
+Las pruebas SQL locales se pueden repetir con `npm run validar:sql -- --solo=fases-5-6` en una base desechable. La prueba remota valida las funciones y los datos, y las pruebas manuales del navegador cubren el recorrido con una sesión real.
+
+## CUIDARED-010 — Suscripciones Web Push
+
+**Estado.** Aplicado el 16/11/2026 con autorización del usuario. Registro de dispositivos y cola de entregas Web Push.
+
+- La tabla nueva `cuidared.push_suscripcion` guarda `endpoint text`, `endpoint_hash bytea` generado y usado como PK, `usuario_id uuid` con FK a `usuario`, `sesion_id uuid`, `p256dh text`, `auth text`, `creada_en timestamptz` y `actualizada_en timestamptz`. Usa índices por usuario y sesión, RLS y acceso mediado por la API. El cierre manual elimina el registro mediante un disparador en `sesion_acceso`.
+- La tabla nueva `cuidared.push_entrega` guarda `entrega_id uuid` como PK, `notificacion_id uuid` y `endpoint_hash bytea` como FKs, `estado text`, `intentos smallint`, `reserva_id uuid`, `version_suscripcion timestamptz`, `disponible_en timestamptz`, `creada_en timestamptz` y `terminada_en timestamptz`. Usa RLS, una restricción única por aviso y dispositivo, y un índice de pendientes.
+- `cuidared_interno.push_endpoint_valido` comprueba el formato y los proveedores admitidos. Las funciones `cuidared_api.api_push_registrar_suscripcion`, `api_push_estado_suscripcion` y `api_push_revocar_suscripcion` exigen la sesión vigente y limitan las operaciones a la persona autenticada.
+- El disparador en `notificacion` encola entregas de alertas nuevas. `cuidared_interno.push_aviso_elegible` revalida permisos y vigencia del aviso. `cuidared_api.api_push_reservar_entregas` y `api_push_finalizar_entrega` están reservadas a `service_role`.
+- [SQL de suscripciones](propuestas/web-push-suscripciones.sql), [SQL de entregas](propuestas/web-push-entregas.sql) y [prueba local del motor](verificacion/local/pruebas-web-push-entregas.sql).
+- [Migración `20261116043610`](../supabase/migrations/20261116043610_web_push_cuidared_010.sql). La [prueba transaccional en Supabase](verificacion/web-push-supabase.sql) comprobó que una alerta genera una reserva única, su finalización y la revocación al cerrar sesión. Los datos de prueba se revirtieron, la revisión diaria de alertas sigue activa y ambas tablas tienen RLS. El emisor queda apagado mientras está pendiente el contacto VAPID.
+
+## CUIDARED-011 — Alertas por necesidades prioritarias
+
+**Estado.** Aplicado el 17/11/2026 en Supabase CuidaRed con aprobación del usuario. [Propuesta SQL](propuestas/fase-6c-alertas-necesidades-prioritarias.sql) y [migración `20261117044316`](../supabase/migrations/20261117044316_alertas_necesidades_prioritarias_cuidared_011.sql).
+
+| Objeto | Cambio |
+| --- | --- |
+| `cuidared.tipo_alerta` | Agrega el registro `necesidad_prioritaria` («Necesidad prioritaria»). |
+| `cuidared.envejeciente_necesidad` | Agrega el disparador `alertas_necesidad_prioritaria` para altas y cambios de estado, catálogo o prioridad. |
+| `cuidared_interno` | Actualiza `alerta_es_prioritaria`, `trg_alerta_fuente_consistente`, `alertas_fuentes_vigentes` y `alertas_reconciliar_adulto`. Reutiliza la fuente de necesidad y su índice único. |
+
+La evaluación inicial busca ocurrencias pendientes de prioridad alta en expedientes activos con consentimiento vigente y acceso operativo. Cada alerta se agrupa por adulto y usa los permisos y preferencias existentes para avisos internos y Web Push. Los medicamentos pendientes siguen su regla RF-04 con su tipo propio. El cambio usa las tablas, columnas, rutas y permisos existentes.
+
+**Verificación local.** La [regresión SQL](verificacion/local/pruebas-6c-necesidades-prioritarias.sql) verificó alta y cambio de prioridad, agrupación, filtro por tipo, destinatarios, cierre automático y deduplicación. La evaluación inicial creó una alerta y un aviso para una necesidad sintética preexistente. La [prueba Web Push](verificacion/local/pruebas-web-push-entregas.sql) verificó que una alerta de Transporte encola una entrega para el Coordinador de Familia. Las pruebas usaron PostgreSQL desechable con Supabase simulado.
+
+**Verificación en Supabase.** El disparador está activo. La evaluación inicial creó una alerta pendiente para la única necesidad de Transporte elegible, un aviso interno para el administrador autorizado y una entrega Web Push. El emisor registró esa entrega como enviada.
+
 ## Backoffice CuidaRed · 14/11/2026
 
 | Campo        | Registro                                                                                                                                                                                                                                                |
@@ -176,3 +264,17 @@ El ensayo previo y la verificación posterior en Supabase pasaron con datos sint
 La [migración de reintentos](../supabase/migrations/20261118024823_solicitudes_visita_reintentos.sql) se aplicó con la autorización vigente para completar el módulo. Supabase la registró como `20261118024823`. La creación serializa peticiones con la misma huella y devuelve el resultado guardado cuando sus datos coinciden. Un reintento conserva una sola solicitud y una sola notificación de creación por gestor.
 
 La API puede repetir el envío ante una interrupción de transporte. El formulario mantiene un identificador por intento en memoria y Express deriva de él el mismo código con el secreto del servidor. Se verificaron el rol `service_role`, el correo opcional, el reintento y la ausencia de duplicados mediante una transacción revertida en el entorno alojado.
+
+### Compatibilidad del mantenimiento con las alertas de seguimiento
+
+**Estado.** Aplicado en Supabase CuidaRed el 17/11/2026 con aprobación del usuario. Se reprodujo en una base local desechable el fallo `alerta_fuente_obligatoria_chk` del generador anterior al encontrar un caso elegible.
+
+- [Migración `20261117055733`](../supabase/migrations/20261117055733_backoffice_alertas_compatibilidad.sql). Reemplaza `cuidared_interno.bo_alertas_seguimiento()` para que el mantenimiento use el motor de alertas de CUIDARED-009 en el seguimiento familiar. Conserva los dos trabajos programados y reaprovecha la comprobación de consentimiento, el umbral efectivo y la deduplicación por fuente existentes.
+- [Prueba local de compatibilidad](verificacion/local/pruebas-backoffice-alertas.sql). Comprueba el límite exacto, la fuente obligatoria y que ambos trabajos puedan ejecutarse sin crear duplicados.
+- En Supabase se verificaron los permisos internos de la función y la ejecución exitosa de `cuidared-backoffice-diario` a las 06:00 UTC, después de aplicar la migración.
+
+### Duración de las pruebas nuevas
+
+La [migración `20261117055736`](../supabase/migrations/20261117055736_backoffice_prueba_siete_dias.sql) cambió `cuidared.configuracion_sistema.prueba_duracion_dias` de 14 a 7 y registró el ajuste en la auditoría del Backoffice. El disparador `cuidared.fn_prueba_inmutable()` calcula el fin desde el inicio del alta con 168 horas transcurridas. La regla aplica a las altas nuevas de Familia y Organización.
+
+Las pruebas locales confirmaron las 168 horas en ambos tipos de cuenta. La comparación antes y después en Supabase confirmó que las fechas de las tres cuentas existentes, incluidas las fechas históricas, se conservaron.

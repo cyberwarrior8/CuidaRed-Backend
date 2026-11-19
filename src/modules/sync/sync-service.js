@@ -1,4 +1,4 @@
-/* Casos de uso de la sincronización de visitas sin conexión (LWW, idempotencia) · RF-10, RF-4.5, RNF-4.2. © 2026 Equipo CuidaRed – INTEC. */
+/* Casos de uso de la sincronización de visitas y necesidades · RF-10, RF-4.5, RNF-4.2. © 2026 Equipo CuidaRed – INTEC. */
 import { AppError } from '../../lib/errors.js';
 import { leerOperacion } from './sync-schemas.js';
 

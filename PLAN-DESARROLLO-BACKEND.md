@@ -1,6 +1,6 @@
 # Desarrollo del backend de CuidaRed en ocho fases
 
-Los cambios locales de fases 2 a 4 están en `Edgardo-CuidaRed-Desarrollo`. La rama `integracion/fases-2-4` se reserva para la revisión conjunta antes de la rama principal. [Contratos, verificación y aprobación de persistencia pendiente](docs/INTEGRACION-FASES-2-A-4.md).
+Los cambios locales de fases 2 a 4 están en `Edgardo-CuidaRed-Desarrollo`. La rama `integracion/fases-2-4` se reserva para la revisión conjunta antes de la rama principal. [Contratos, despliegue y validación](docs/INTEGRACION-FASES-2-A-4.md).
 
 ## Autoridad, alcance y estado
 
@@ -11,11 +11,11 @@ Cada fase entrega API, pruebas, documentación e integración mínima con el fro
 | Fase | Proceso               | Estado de implementación                                                                                                        |
 | ---- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
 | 1    | Perfil y Acceso       | Código, pruebas y persistencia aplicada con aprobación; pendiente configuración Auth y pruebas con usuarios reales. No cerrada. |
-| 2    | Organización          | API, pruebas y propuesta SQL (2a–2c) validada en local, **sin aplicar**; pendiente aprobación de BD y Auth. No cerrada.         |
-| 3    | Envejecientes         | API, pruebas y propuesta SQL (3a–3b) validada en local, **sin aplicar**; consentimiento y retención siguen como propuesta.      |
-| 4    | Visitas y Seguimiento | API, pruebas y propuesta SQL (4a–4c) validada en local, **sin aplicar**; pendiente bucket, acceso `anon` y recurrencia.         |
-| 5    | Necesidades           | Pendiente; resolver catálogos, validaciones y transiciones.                                                                     |
-| 6    | Alertas               | Pendiente; resolver fuentes, ciclo, destinatarios y calendario.                                                                 |
+| 2    | Organización          | 2a–2c y cierre aplicados. Reenvío y auditoría conectados. Pendiente verificar entrega real de correo. |
+| 3    | Envejecientes         | 3a–3b y cierre aplicados. Retiro, factores y adjuntos conectados. Pendiente verificar archivos reales. |
+| 4    | Visitas y Seguimiento | 4a–4d y cierre aplicados. Series, captura offline y bandeja interna conectadas. |
+| 5    | Necesidades           | SQL aplicado y verificado en Supabase. Catálogo, ocurrencias, prioridad, historial y sincronización listos para pruebas manuales. |
+| 6    | Alertas               | SQL verificado en Supabase. Evaluación inicial ejecutada y tarea diaria activa. Pendientes las pruebas manuales en el navegador. |
 | 7    | Reportes              | Pendiente; resolver métricas, formatos y contenido médico.                                                                      |
 | 8    | Suscripción y Pagos   | Pendiente; resolver oferta comercial y ciclo de suscripción sandbox.                                                            |
 
@@ -56,6 +56,7 @@ Cada fase entrega API, pruebas, documentación e integración mínima con el fro
 
 - Cédula obligatoria y globalmente única; consentimiento y exactamente un contacto principal de emergencia.
 - Asignaciones de cuidadores, vínculos familiares y permisos explícitos; indicaciones médicas restringidas.
+- Retiro del consentimiento con bloqueo operativo y constancia para gestores. Eliminar datos requiere revisión manual de cada caso.
 - Evaluaciones históricas: cuestionario de 100 puntos, máximo de factores vigentes y «Sin evaluación vigente» si no hay factores actuales.
 - Historial preparado para completarse con visitas, necesidades y alertas.
 
@@ -67,10 +68,11 @@ Cada fase entrega API, pruebas, documentación e integración mínima con el fro
 
 **Objetivos:** programar visita, registrar realización, adjuntar evidencia y consultar historial.
 
-- Programación y autorización previas: Coordinador en Familia; Administrador o Coordinador en Organización.
+- Visitas y Solicitudes quedan reservadas a Organización por decisión del 19/11/2026. El Administrador o Coordinador autoriza la visita antes de su ejecución.
 - Visitantes y observaciones por adulto, agenda y asignación/ejecución de tareas.
 - Evidencias privadas y validación obligatoria antes de completar tareas que la requieren.
-- Sincronización de visitas con UTC, LWW, reintentos, deduplicación y revalidación de permisos.
+- Sincronización de visitas con UTC, LWW, reintentos, deduplicación y revalidación de permisos. Las capturas pendientes quedan asociadas al usuario en el mismo navegador.
+- Series diarias o semanales de hasta 60 visitas con autorización al programar si el plan las incluye. Bandeja de solicitudes con formulario público activable por entorno.
 
 **Entregables:** visitas, agenda, tareas, archivos e historial conectados. **Cierre:** solo visitas realizadas cuentan como contacto; no hay ejecución sin autorización ni cierre con evidencia pendiente; reintentos sin duplicados.
 
@@ -86,7 +88,7 @@ Cada fase entrega API, pruebas, documentación e integración mínima con el fro
 
 **Entregables:** necesidades, historial y sincronización integrados. **Cierre:** recurrencias preservadas, permisos aplicados en servidor y pendientes offline sin duplicados ni pérdida silenciosa.
 
-**Preparación:** catálogos, validaciones y transiciones. **Dependencias:** fases 3 y 4. **Trazabilidad:** ID05; RF-03, RF-10.
+**Contrato:** [Necesidades](docs/contratos/necesidades.md) y [sincronización](docs/contratos/sync.md). **Dependencias:** fases 3 y 4. **Trazabilidad:** ID05; RF-03, RF-10.
 
 ## Fase 6 — Alertas
 
@@ -98,7 +100,7 @@ Cada fase entrega API, pruebas, documentación e integración mínima con el fro
 
 **Entregables:** motor, ejecución periódica, notificaciones y bandeja conectada. **Cierre:** alertas independientes por fuente, causas sin duplicación, solo visitas realizadas reinician seguimiento y notificaciones sin exposición indebida.
 
-**Preparación:** identidad de fuentes, cierre/reapertura, destinatarios, periodicidad y zona horaria. **Dependencias:** fases 3, 4 y 5. **Trazabilidad:** ID06; RF-04, RF-05, RF-18.
+**Contrato:** [Alertas](docs/contratos/alertas.md). **Dependencias:** fases 3, 4 y 5. **Trazabilidad:** ID06; RF-04, RF-05, RF-18.
 
 ## Fase 7 — Reportes
 

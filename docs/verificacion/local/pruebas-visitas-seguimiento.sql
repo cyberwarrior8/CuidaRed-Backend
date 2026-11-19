@@ -19,6 +19,7 @@ declare
   perfil bigint;
   prioridad smallint;
   horario jsonb;
+  serie jsonb;
   operacion jsonb;
   tiempo_captura timestamptz := date_trunc('milliseconds', now()) - interval '5 minutes';
   meta jsonb := '{"nombre_archivo":"visita.pdf", "tipo_mime":"application/pdf", "tamano_bytes":10}';
@@ -28,9 +29,16 @@ declare
 begin
   perform pruebas.miembro(cuenta, coord, 'coordinador');
   perform pruebas.miembro(cuenta, cuidador, 'cuidador');
+  if not exists (select from cuidared.tipo_cuidado) then
+    insert into cuidared.tipo_cuidado(nombre) values ('Cuidado en domicilio');
+  end if;
+  insert into cuidared.cuidador(usuario_id, tipo_cuidado_id, cuidador_independiente)
+    values (cuidador, (select min(tipo_cuidado_id) from cuidared.tipo_cuidado), true) returning cuidador_id into perfil;
   perform pruebas.como(familiar);
-  perform pruebas.afirmar(not (cuidared_api.api_contexto_cuenta(familia)->'permisos' ? 'visitas:ver'), 'Módulo fuera de la cuenta familiar');
+  perform pruebas.afirmar(not (cuidared_api.api_contexto_cuenta(familia)->'permisos' ?| array[
+    'visitas:ver', 'visitas:programar', 'visitas:autorizar', 'visitas:registrar']), 'Módulo fuera de la cuenta familiar');
   perform pruebas.afirmar(cuidared_api.api_contexto_cuenta(familia)->'permisos' ? 'sync:usar', 'Se conserva la sincronización familiar para otras entidades');
+  perform pruebas.error(format('select cuidared_api.api_listar_visitas(%s)', familia), '42501');
   perform pruebas.afirmar(not has_function_privilege('authenticated', 'cuidared_api.api_visita_reclamar_avisos()', 'execute'), 'La cola no es un servicio del cliente');
   perform pruebas.afirmar(has_schema_privilege('service_role', 'cuidared_api', 'usage'), 'El worker puede invocar su esquema');
 
@@ -39,6 +47,18 @@ begin
     'fecha_propuesta', dia, 'hora_propuesta', '10:00', 'motivo', 'Visita familiar', 'codigo_hash', huella));
   select solicitud_visita_id into creada from cuidared.solicitud_visita where codigo_hash = huella;
   perform pruebas.como(admin);
+  serie := jsonb_build_object('fecha', dia + 7, 'hora_programada', '09:00', 'hora_fin_programada', '09:45',
+    'razon', 'Serie de seguimiento', 'envejeciente_ids', array[otra_persona], 'participante_ids', array[cuidador],
+    'repeticion', jsonb_build_object('frecuencia', 'diaria', 'hasta', dia + 8));
+  -- Habilitación sintética y transaccional para comprobar el contrato con una Organización cuyo plan lo permite.
+  insert into cuidared.prueba_funcionalidad(tipo_cuenta_id, funcionalidad)
+    select c.tipo_cuenta_id, 'visitas_recurrentes' from cuidared.cuenta c where c.cuenta_id = cuenta
+    on conflict do nothing;
+  datos := cuidared_api.api_programar_visitas_recurrentes(cuenta, serie);
+  perform pruebas.afirmar(jsonb_array_length(datos->'visitas') = 2, 'Una organización habilitada puede programar una serie');
+  perform pruebas.afirmar((select count(*) = 2 from cuidared.visita v join cuidared.registro_visita r using (visita_id)
+    where v.serie_id = (datos->>'serie_id')::uuid and v.hora_fin_programada = time '09:45'
+      and not v.pendiente_autorizacion and r.autorizada_por_usuario_id = admin), 'La serie conserva horario y autorización');
   horario := jsonb_build_object('envejeciente_id', persona, 'participante_id', cuidador, 'fecha', dia, 'hora', '10:00', 'hora_fin_programada', '11:00');
   datos := cuidared_api.api_autorizar_solicitud_visita(cuenta, creada, horario);
   v_visita := (datos->>'visita_id')::uuid;
@@ -75,11 +95,6 @@ begin
 
   insert into cuidared.prioridad(nombre, orden) values ('Media', 2) on conflict do nothing;
   select min(prioridad_id) into prioridad from cuidared.prioridad;
-  if not exists (select from cuidared.tipo_cuidado) then
-    insert into cuidared.tipo_cuidado(nombre) values ('Cuidado en domicilio');
-  end if;
-  insert into cuidared.cuidador(usuario_id, tipo_cuidado_id, cuidador_independiente)
-    values (cuidador, (select min(tipo_cuidado_id) from cuidared.tipo_cuidado), true) returning cuidador_id into perfil;
   datos := cuidared_api.api_tarea_crear(cuenta, jsonb_build_object('visita_id', v_visita, 'envejeciente_id', persona,
     'cuidador_id', perfil::text, 'titulo', 'Preparar la visita', 'prioridad_id', prioridad, 'fecha_programada', dia, 'requiere_evidencia', false));
   perform pruebas.afirmar(datos->'tareas'->0->>'visita_id' = v_visita::text, 'La agenda enlaza la tarea con la visita');
@@ -111,8 +126,8 @@ begin
   perform pruebas.afirmar((select fecha_realizacion = tiempo_captura and 'caidas' = any(checklist) from cuidared.visita where visita_id = v_visita), 'Se conserva la hora UTC de captura y el checklist');
   perform pruebas.afirmar((cuidared_api.api_publico_consultar_solicitud(huella)->>'puede_registrar_observacion')::boolean, 'La visita completa abre observaciones');
 
-  update cuidared.envejeciente set consentimiento_retirado_en = now() where envejeciente_id = persona;
   perform pruebas.como(admin);
+  perform cuidared_api.api_retirar_consentimiento(cuenta, persona, 'Petición recibida');
   perform pruebas.error(format('select cuidared_api.api_obtener_visita(%s,%L::uuid)', cuenta, v_visita), 'P0002');
 end $$;
 rollback;
