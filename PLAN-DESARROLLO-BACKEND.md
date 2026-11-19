@@ -68,11 +68,11 @@ Cada fase entrega API, pruebas, documentación e integración mínima con el fro
 
 **Objetivos:** programar visita, registrar realización, adjuntar evidencia y consultar historial.
 
-- Programación y autorización previas: Coordinador en Familia; Administrador o Coordinador en Organización.
+- Visitas y Solicitudes quedan reservadas a Organización por decisión del 19/11/2026. El Administrador o Coordinador autoriza la visita antes de su ejecución.
 - Visitantes y observaciones por adulto, agenda y asignación/ejecución de tareas.
 - Evidencias privadas y validación obligatoria antes de completar tareas que la requieren.
-- Sincronización de visitas con UTC, LWW, reintentos, deduplicación y revalidación de permisos.
-- Series diarias o semanales de hasta 60 visitas con autorización al programar. Bandeja para solicitudes existentes con entrada pública cerrada.
+- Sincronización de visitas con UTC, LWW, reintentos, deduplicación y revalidación de permisos. Las capturas pendientes quedan asociadas al usuario en el mismo navegador.
+- Series diarias o semanales de hasta 60 visitas con autorización al programar si el plan las incluye. Bandeja de solicitudes con formulario público activable por entorno.
 
 **Entregables:** visitas, agenda, tareas, archivos e historial conectados. **Cierre:** solo visitas realizadas cuentan como contacto; no hay ejecución sin autorización ni cierre con evidencia pendiente; reintentos sin duplicados.
 

@@ -47,7 +47,7 @@ export function createSyncRouter({ audit }) {
     res.json({ data: { resultados } });
   });
 
-  router.get('/sync/:idCliente', requirePermiso('sync:usar'), async (req, res) => {
+  router.get('/sync/:idCliente', requireSyncUsar, requirePermiso('sync:usar'), async (req, res) => {
     const resultado = await service(res).obtener(
       res.locals.cuenta.cuentaId,
       uuidParam(req.params.idCliente),

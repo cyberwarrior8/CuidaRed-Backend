@@ -230,14 +230,40 @@ La evaluación inicial busca ocurrencias pendientes de prioridad alta en expedie
 
 ## Backoffice CuidaRed · 14/11/2026
 
-| Campo        | Registro                                                                                                                                                                                                               |
-| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Alcance      | Estados de cuenta y usuario, membresía interna y sesiones, catálogo gratuito, extensiones, configuración, marcas, logs, señales de cambio y auditoría. Integra el control operativo de la PWA y el seguimiento diario. |
-| SQL          | `supabase/migrations/20261114133700_backoffice.sql`, `supabase/migrations/20261114133759_backoffice_tareas.sql` y `supabase/seeds/backoffice-catalogo.sql`. |
-| Estado       | Aplicado en el proyecto CuidaRed el 14/11/2026 con autorización explícita del usuario. Supabase registró las versiones indicadas. La tarea diaria quedó activa. |
+| Campo        | Registro                                                                                                                                                                                                                                                |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Alcance      | Estados de cuenta y usuario, membresía interna y sesiones, catálogo gratuito, extensiones, configuración, marcas, logs, señales de cambio y auditoría. Integra el control operativo de la PWA y el seguimiento diario.                                  |
+| SQL          | `supabase/migrations/20261114133700_backoffice.sql`, `supabase/migrations/20261114133759_backoffice_tareas.sql` y `supabase/seeds/backoffice-catalogo.sql`.                                                                                             |
+| Estado       | Aplicado en el proyecto CuidaRed el 14/11/2026 con autorización explícita del usuario. Supabase registró las versiones indicadas. La tarea diaria quedó activa.                                                                                         |
 | Verificación | Pruebas en PostgreSQL aislado con el cierre remoto `20261114022629`. En Supabase se confirmaron el bucket, los permisos de las RPC, el catálogo, la tarea activa y una ejecución de mantenimiento revertida. La RPC pública de marca devolvió HTTP 200. |
 
 El 14/11/2026 se aprovisionaron en Supabase Auth tres operadores sintéticos, confirmados y sin membresía PWA, con los roles `super_admin`, `soporte` y `auditor`. Se verificaron ingreso, TOTP real, permisos, consultas, persistencia y entrega de logs por SSE desde Express sin exponer las credenciales. La verificación generó eventos de auditoría y telemetría de prueba.
+
+## Visitas públicas · 16/11/2026
+
+La [propuesta de visitas públicas](propuestas/visitas-publicas.sql) conserva las tablas y añade el registro de observaciones después de que coordinación completa la visita. El comentario se guarda en la solicitud y el informe del equipo conserva su propio campo. Las RPC quedan reservadas a Express mediante `service_role`. La [verificación local](verificacion/local/pruebas-visitas-publicas.sql) comprueba permisos, autorización, observación posterior y reintentos. La propuesta se integró en la migración de seguimiento organizacional. Queda la revisión D15 para datos de visitantes reales.
+
+## Seguimiento organizacional · 16/11/2026
+
+La [migración](../supabase/migrations/20261117035328_visitas_seguimiento_organizacional.sql) incluye la activación pública anterior, elimina los permisos de Visitas en cuentas de tipo Familia, agrega ventanas y autorización a citas internas, asocia tareas con visitas, registra la validación de evidencias y encola los correos de seguimiento. Las tablas privadas conservan RLS y los avisos solo se reclaman desde el backend con `service_role`. La [verificación de PostgreSQL local](verificacion/local/pruebas-visitas-seguimiento.sql) usa identidades y archivos simulados.
+
+Aplicada el 16/11/2026 (hora de República Dominicana) en el proyecto CuidaRed con autorización del usuario y registrada en Supabase como versión `20261117035328`. El ensayo transaccional previo verificó que el SQL conserva el control de acceso de expedientes con consentimiento retirado y la sincronización ajena a Visitas. Tras aplicar se confirmaron RLS y los privilegios restringidos del catálogo y la cola. Los correos requieren un remitente verificado.
+
+El 17/11/2026 se verificaron en el proyecto alojado el catálogo, la solicitud pública, la autorización, los cruces de horario, la reprogramación, la cola de avisos, las tareas asociadas, la validación de evidencia, la sincronización UTC y la observación posterior. La prueba revirtió las filas sintéticas y no envió correos ni cargó archivos reales.
+
+## Visitas institucionales · 17/11/2026
+
+La [migración de visitas institucionales](../supabase/migrations/20261118014628_visitas_institucionales.sql) se aplicó al proyecto CuidaRed con la autorización vigente del usuario para completar el módulo. Supabase la registró con versión `20261118014628`.
+
+Las solicitudes incorporan tipo de visita, entidad visitante, tipo de entidad, cantidad de visitantes y aporte previsto. Las personales conservan su destinatario individual. Las institucionales se autorizan para la organización y un responsable asignado, con informe general y evidencias privadas. Las funciones conservan la revisión por roles, la restricción de expedientes retirados y la cola de avisos. Las solicitudes existentes reciben el tipo personal y un visitante por defecto.
+
+El ensayo previo y la verificación posterior en Supabase pasaron con datos sintéticos revertidos. La prueba cubre autorización sin expediente, acceso limitado al responsable, reprogramación, evidencias revisadas, sincronización idempotente y observación posterior del contacto. El [validador local](verificacion/local/pruebas-visitas-institucionales.sql) reproduce ese recorrido.
+
+## Reintentos de solicitudes · 17/11/2026
+
+La [migración de reintentos](../supabase/migrations/20261118024823_solicitudes_visita_reintentos.sql) se aplicó con la autorización vigente para completar el módulo. Supabase la registró como `20261118024823`. La creación serializa peticiones con la misma huella y devuelve el resultado guardado cuando sus datos coinciden. Un reintento conserva una sola solicitud y una sola notificación de creación por gestor.
+
+La API puede repetir el envío ante una interrupción de transporte. El formulario mantiene un identificador por intento en memoria y Express deriva de él el mismo código con el secreto del servidor. Se verificaron el rol `service_role`, el correo opcional, el reintento y la ausencia de duplicados mediante una transacción revertida en el entorno alojado.
 
 ### Compatibilidad del mantenimiento con las alertas de seguimiento
 

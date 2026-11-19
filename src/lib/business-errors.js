@@ -32,6 +32,11 @@ export function businessError(rawMessage) {
 
 // Códigos transversales de cuenta y plan (fase 2). Los módulos agregan los propios.
 registerBusinessErrors({
+  CR_PERFIL_CUIDADOR_REQUERIDO: {
+    status: 409,
+    publicCode: 'CAREGIVER_PROFILE_REQUIRED',
+    message: 'La persona seleccionada necesita un perfil de cuidador vigente.',
+  },
   CR_CUENTA_SIN_ACCESO: {
     status: 403,
     publicCode: 'SUBSCRIPTION_INACTIVE',

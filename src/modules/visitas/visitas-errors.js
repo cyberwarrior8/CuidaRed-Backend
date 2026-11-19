@@ -27,6 +27,21 @@ export const VISITAS_ERRORES = {
     publicCode: 'PARTICIPANT_BUSY',
     message: 'Uno de los participantes ya tiene una visita a esa hora.',
   },
+  CR_ADULTO_OCUPADO: {
+    status: 409,
+    publicCode: 'VISIT_RECIPIENT_BUSY',
+    message: 'La persona mayor ya tiene una visita que coincide con ese horario.',
+  },
+  CR_EVIDENCIA_VISITA_PENDIENTE: {
+    status: 409,
+    publicCode: 'VISIT_EVIDENCE_PENDING',
+    message: 'La coordinación debe revisar las evidencias antes de cerrar la visita.',
+  },
+  CR_VISITA_HORARIO_PASADO: {
+    status: 409,
+    publicCode: 'VISIT_WINDOW_PASSED',
+    message: 'El horario de esta visita ya pasó. Reprográmala antes de autorizarla.',
+  },
   CR_NO_PARTICIPA: {
     status: 403,
     publicCode: 'NOT_PARTICIPANT',

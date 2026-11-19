@@ -1,6 +1,6 @@
 # CuidaRed-Backend
 
-API de CuidaRed en **JavaScript / Node.js / Express**. La fase 1 sigue disponible y la rama local integra las fases 2 a 4 con el frontend del equipo. La persistencia nueva sigue pendiente de aprobación y aplicación en Supabase. Consultar [integración](docs/INTEGRACION-FASES-2-A-4.md), [plan](PLAN-DESARROLLO-BACKEND.md) y [cambios](CAMBIOS-ACTUALES.md).
+API de CuidaRed en **JavaScript / Node.js / Express**. La rama local integra las fases 2 a 4 con el frontend del equipo. Consultar [integración](docs/INTEGRACION-FASES-2-A-4.md), [plan](PLAN-DESARROLLO-BACKEND.md) y [cambios](CAMBIOS-ACTUALES.md).
 
 Contrato compartido con el frontend: [convenciones de API — CR-162](docs/CONVENCIONES-API.md), incluyendo errores, paginación, orden y filtros.
 
@@ -18,6 +18,14 @@ npm run dev
 `npm start` inicia sin vigilancia de archivos. JavaScript ESM se ejecuta directamente: no hay paso de compilación TypeScript. `GET /health/live` confirma que Express responde. Un servidor iniciado no demuestra que los servicios de persistencia estén configurados.
 
 Configurar `SUPABASE_PUBLISHABLE_KEY` con la clave publicable. `SUPABASE_SECRET_KEY` es opcional y se usa en el servidor para invitar miembros con identidad nueva. Producción exige HTTPS y orígenes explícitos. `.env` está ignorado.
+
+## Solicitudes públicas de visita
+
+El servicio conectado se habilita por entorno. La [guía de visitas organizacionales](docs/VISITAS-ORGANIZACION.md) contiene la migración, la configuración de Express y Resend, y los pasos para verificar el flujo por rol. Express valida el envío y la consulta, limita las peticiones y guarda solo la huella del código de seguimiento.
+
+La portada muestra el formulario cuando la ruta pública está habilitada y permite enviarlo si hay organizaciones operativas. Desde «Visitas» → «Solicitudes externas», administración o coordinación revisan la solicitud y designan a quien registrará la visita. El visitante consulta el resultado con su código y puede añadir una observación después del cierre.
+
+La migración de Visitas está aplicada en CuidaRed alojado. El alcance D15 conserva la revisión de retención y aviso de los datos de visitantes antes de abrir el formulario a personas reales.
 
 ## Comprobaciones
 

@@ -21,6 +21,8 @@ import {
   readVisitasQuery,
   registrarVisitaSchema,
   rechazarSolicitudSchema,
+  reprogramarVisitaSchema,
+  revisarEvidenciaVisitaSchema,
   sinCuerpoSchema,
   uuidParam,
 } from './visitas-schemas.js';
@@ -44,6 +46,16 @@ export function createVisitasRouter({ audit }) {
   const router = Router({ mergeParams: true });
   const repo = (res) => createVisitasRepository(res.locals.access.repository.rpc);
   const cuentaId = (res) => res.locals.cuenta.cuentaId;
+  router.use(['/visitas', '/solicitudes-visita'], (_req, res, next) => {
+    if (res.locals.cuenta.tipo !== 'organizacion') {
+      throw new AppError(
+        403,
+        'FORBIDDEN',
+        'Las visitas se gestionan desde cuentas de organización.',
+      );
+    }
+    next();
+  });
   const log = (res, action) =>
     audit({
       requestId: res.locals.requestId,
@@ -88,6 +100,21 @@ export function createVisitasRouter({ audit }) {
   });
 
   router.post(
+    '/visitas/:visitaId/autorizar',
+    requirePermiso('visitas:autorizar'),
+    async (req, res) => {
+      parseBody(sinCuerpoSchema, req.body);
+      const visita = await res.locals.access.repository.rpc('api_autorizar_visita', {
+        p_cuenta_id: cuentaId(res),
+        p_visita_id: uuidParam(req.params.visitaId),
+      });
+      if (!visita || typeof visita.visita_id !== 'string') throw unavailable();
+      log(res, 'visita.autorizada');
+      res.json({ data: visita });
+    },
+  );
+
+  router.post(
     '/visitas/:visitaId/iniciar',
     requirePermiso('visitas:registrar'),
     async (req, res) => {
@@ -106,6 +133,21 @@ export function createVisitasRouter({ audit }) {
       const datos = parseBody(registrarVisitaSchema, req.body);
       const visita = await repo(res).registrar(cuentaId(res), visitaId, datos);
       log(res, 'visita.registrada');
+      res.json({ data: visita });
+    },
+  );
+
+  router.post(
+    '/visitas/:visitaId/reprogramar',
+    requirePermiso('visitas:programar'),
+    requirePermiso('visitas:autorizar'),
+    async (req, res) => {
+      const visita = await repo(res).reprogramar(
+        cuentaId(res),
+        uuidParam(req.params.visitaId),
+        parseBody(reprogramarVisitaSchema, req.body),
+      );
+      log(res, 'visita.reprogramada');
       res.json({ data: visita });
     },
   );
@@ -163,19 +205,49 @@ export function createVisitasRouter({ audit }) {
     if (!Array.isArray(rows)) throw unavailable();
     const storage = res.locals.access.repository.storage(EVIDENCIAS_BUCKET);
     const data = await Promise.all(
-      rows.map(async ({ evidencia_id, nombre_archivo, ruta }) => {
-        if (typeof ruta !== 'string') throw unavailable();
-        try {
-          const url_descarga = await storage.signedDownloadUrl(ruta, DESCARGA_SEGUNDOS);
-          return { evidencia_id, nombre_archivo, url_descarga };
-        } catch (error) {
-          if (!(error instanceof AppError) || error.status !== 404) throw error;
-          return { evidencia_id, nombre_archivo, url_descarga: null };
-        }
-      }),
+      rows.map(
+        async ({ evidencia_id, nombre_archivo, ruta, estado_validacion, motivo_rechazo }) => {
+          if (typeof ruta !== 'string') throw unavailable();
+          try {
+            const url_descarga = await storage.signedDownloadUrl(ruta, DESCARGA_SEGUNDOS);
+            return {
+              evidencia_id,
+              nombre_archivo,
+              url_descarga,
+              estado_validacion,
+              motivo_rechazo,
+            };
+          } catch (error) {
+            if (!(error instanceof AppError) || error.status !== 404) throw error;
+            return {
+              evidencia_id,
+              nombre_archivo,
+              url_descarga: null,
+              estado_validacion,
+              motivo_rechazo,
+            };
+          }
+        },
+      ),
     );
     res.json({ data });
   });
+
+  router.post(
+    '/visitas/:visitaId/evidencias/:evidenciaId/revision',
+    requirePermiso('evidencias:validar'),
+    async (req, res) => {
+      const { motivo } = parseBody(revisarEvidenciaVisitaSchema, req.body);
+      const data = await res.locals.access.repository.rpc('api_visita_revisar_evidencia', {
+        p_cuenta_id: cuentaId(res),
+        p_visita_id: uuidParam(req.params.visitaId),
+        p_evidencia_id: uuidParam(req.params.evidenciaId),
+        p_motivo: motivo ?? null,
+      });
+      log(res, motivo ? 'visita.evidencia_rechazada' : 'visita.evidencia_validada');
+      res.json({ data });
+    },
+  );
 
   router.get('/solicitudes-visita', requirePermiso('visitas:autorizar'), async (req, res) => {
     const query = readSolicitudesQuery(req.query);

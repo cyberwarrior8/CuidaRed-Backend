@@ -1,5 +1,7 @@
 # Contrato de Visitas y Solicitudes de Visita — fase 4, bloque 4a
 
+> Este documento conserva el contrato histórico de 4a. Desde el 19/11/2026, Visitas y Solicitudes se gestionan solo en Organización, según el [seguimiento organizacional](../VISITAS-ORGANIZACION.md). Las citas individuales creadas desde el portal esperan autorización. Los clientes históricos que omiten `autorizar` y las series conservan la programación con autorización.
+
 ## Estado y alcance
 
 ID04; RF-02 y RF-10. Los bloques de integración 4a a 4d están aplicados. El cierre agrega series autorizadas, refuerza el registro del Voluntario y conecta solo la bandeja interna. Consultar [estado de despliegue](../CAMBIOS-SCHEMA-CUIDARED.md).

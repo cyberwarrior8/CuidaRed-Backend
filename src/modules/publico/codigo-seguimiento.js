@@ -6,7 +6,19 @@ export const ALFABETO_CODIGO = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 export const PATRON_CODIGO = /^VIS-[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$/;
 
 /** "VIS-XXXX-XXXX" con 8 símbolos aleatorios criptográficos (40 bits). Se devuelve al visitante una única vez. */
-export function generarCodigoSeguimiento() {
+export function generarCodigoSeguimiento(idempotencia, secreto) {
+  if (idempotencia && secreto) {
+    const huella = createHmac('sha256', secreto)
+      .update('solicitud-visita:' + idempotencia)
+      .digest('hex');
+    let bits = BigInt('0x' + huella.slice(0, 10));
+    let simbolos = '';
+    for (let i = 0; i < 8; i += 1) {
+      simbolos = ALFABETO_CODIGO[Number(bits & 31n)] + simbolos;
+      bits >>= 5n;
+    }
+    return `VIS-${simbolos.slice(0, 4)}-${simbolos.slice(4)}`;
+  }
   let simbolos = '';
   for (let i = 0; i < 8; i += 1) simbolos += ALFABETO_CODIGO[randomInt(ALFABETO_CODIGO.length)];
   return `VIS-${simbolos.slice(0, 4)}-${simbolos.slice(4)}`;

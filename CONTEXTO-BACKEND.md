@@ -46,7 +46,7 @@ Las rutas siguientes son relativas a este repositorio. Los identificadores S01�
 
 **Jerarquía confirmada:** prevalece S03, «V2 Reglas de Negocio CuidaRed»; se conserva S01, el SRS, donde no contradiga V2. S04, `DB.sql`, es la base técnica del modelo y debe ajustarse para cumplir las reglas confirmadas. Las decisiones expresas del usuario prevalecen ante discrepancias documentales: el Voluntario inicia sesión con Supabase Auth y las alertas se conservan por fuente, agrupando el caso prioritario en pantalla. [D01, D02, D03 y resolución principal de D06]
 
-**Otras decisiones confirmadas:** visitas autorizadas por Coordinador en Familia y por Administrador o Coordinador en Organización; pagos del MVP mediante **Stripe exclusivamente en sandbox, sin pagos reales**; las tareas que requieren evidencia solo pueden completarse cuando la evidencia está validada. [Resoluciones principales de D05, D07 y D12]
+**Otras decisiones confirmadas:** Visitas y Solicitudes solo en Organización, con autorización previa de Administrador o Coordinador; pagos del MVP mediante **Stripe exclusivamente en sandbox, sin pagos reales**; las tareas que requieren evidencia solo pueden completarse cuando la evidencia está validada. [Resoluciones principales de D05, D07 y D12]
 
 **Identificación, riesgo y vencimiento confirmados:** cédula del adulto mayor obligatoria y única en toda la plataforma; conservar cuestionario de riesgo de 100 puntos y máximo de factores vigentes, mostrando **«Sin evaluación vigente»** cuando no exista ninguno; al vencer prueba/suscripción sin pago de prueba exitoso solo se permite acceder a la cuenta y gestionar la suscripción, con los módulos operativos bloqueados. [Resoluciones principales de D09/D11 y regla de acceso de D07]
 
@@ -105,7 +105,7 @@ El SRS actualizado contiene los siguientes requisitos. Esta tabla conserva sus i
 | RF | Función | Implicación para el backend |
 | --- | --- | --- |
 | RF-01 | Perfiles de adultos mayores | Cédula obligatoria y única en toda la plataforma; condición general y riesgo; pertenencia a una única cuenta y aislamiento entre cuentas. |
-| RF-02 | Visitas | Programación y autorización previas: Coordinador en Familia; Administrador/Coordinador en Organización. Solo realizadas/completadas cuentan como contacto efectivo. |
+| RF-02 | Visitas | Solo Organización. Programación y autorización previas por Administrador o Coordinador. Solo visitas completadas cuentan como contacto efectivo. |
 | RF-03 | Necesidades | Crear, consultar, cambiar estado, conservar ocurrencias y datos de resolución. |
 | RF-04 | Alertas prioritarias | Riesgo alto o medicamento pendiente; una alerta por fuente y caso prioritario agrupado en pantalla. Detalles de deduplicación/ciclo de vida pendientes D06. |
 | RF-05 | Seguimiento familiar | Más de 15 días calendario sin visita efectiva, umbral configurable. |
@@ -196,7 +196,7 @@ Categorías documentadas: Familia → MonitoreoDistancia, CuidadoDomiciliario, C
 | Riesgos | Coordinador registra/actualiza en Familia; Cuidador solo consulta; método confirmado: cuestionario, máximo vigente y «Sin evaluación vigente» cuando no hay factores vigentes | Operaciones del Administrador/Coordinador en Organización, respuestas incompletas y persistencia del cuestionario, D04/D11. |
 | Indicaciones médicas | Coordinador/Cuidador registran y actualizan; familiar autorizado consulta; voluntario no registra/modifica | Acceso del Administrador y visibilidad de campos, D04. |
 | Necesidades | Familia: Coordinador/Cuidador; Organización: Administrador/Coordinador/Cuidador. Voluntario no registra ni modifica. | Los escenarios antiguos que permiten al Voluntario gestionar necesidades quedan superados por V2, D01 resuelta. |
-| Visitas | Programación previa; autoriza Coordinador en Familia y Administrador/Coordinador en Organización; el voluntario registra ejecución y observación | Quién solicita, acepta y cancela; detalles de autorización y ámbito, D05. |
+| Visitas | Visitas y Solicitudes solo en Organización; autoriza Administrador o Coordinador; el Voluntario asignado puede registrar ejecución y observación | Recorrido en [Visitas y seguimiento comunitario](docs/VISITAS-ORGANIZACION.md), D05. |
 | Tareas | Coordinador crea/asigna en Familia; Administrador/Coordinador en Organización; Cuidador asignado ejecuta. Si requiere evidencia, debe estar validada antes de completar | Cancelación, reapertura, repetición y cambios posteriores a la validación, D12. |
 | Alertas | Coordinador gestiona en Familia; Administrador/Coordinador en Organización; Cuidador puede cerrarlas | Alcance exacto de consulta/cierre y transiciones, D06. |
 | Reportes estadísticos | Administrador/Coordinador con límites de cuenta | Informe médico de Coordinador/Cuidador y detalle permitido, D04. |
@@ -224,7 +224,7 @@ El frontend crea perfil, contacto principal y clasificación inicial en la misma
 
 Las reglas de V2 que prevalecen describen: programación → aceptación/autorización → registro del visitante → realización con observación por adulto; también puede cancelarse. **La programación y autorización previas son obligatorias** conforme a V2. La aceptación no tiene un estado ni campos propios en S04. Falta definir actores y detalles del flujo, no volver a elegir entre visita programada o registro directo. [S01 RF-02, S03, S04; D01 resuelta, D05 pendiente]
 
-**Autorizadores confirmados por el usuario:** en Cuenta Familia autoriza el Coordinador; en Cuenta Organización autoriza el Administrador o el Coordinador. Esta facultad no se concede al titular por el solo hecho de ser titular ni al visitante por ser Cuidador/Voluntario. No se han definido aún solicitud, aceptación, cancelación ni revocación de una autorización. [Resolución principal de D05]
+El 19/11/2026 se confirmó que Visitas y Solicitudes están reservadas a Organización. El Administrador o Coordinador autoriza. El Cuidador o Voluntario asignado registra la visita dentro de su alcance. La [guía de seguimiento organizacional](docs/VISITAS-ORGANIZACION.md) describe los flujos de solicitud y programación. [D05]
 
 - Visita programada o cancelada **no** reinicia los días sin contacto.
 - Solo visita realizada/completada cuenta como contacto efectivo.
@@ -336,7 +336,7 @@ Estos beneficios no tienen una matriz completa de funcionalidades ni estructura 
 
 **Acceso vencido confirmado por el usuario:** cuando vence la prueba o suscripción sin un pago de prueba exitoso en Stripe, la cuenta solo puede acceder a su cuenta y gestionar la suscripción. Se bloquean los módulos operativos, tanto lectura como escritura: no se adopta un modo operativo de solo consulta. La restricción es por la cuenta cuyo acceso venció y se suma a los permisos de cada persona; solo el titular conserva la facultad de pagar. [Regla de acceso de D07]
 
-La API bloquea las operaciones cuando la cuenta está vencida, incluidas las peticiones directas y los lotes offline. Las capturas rechazadas permanecen visibles en la cola de la pestaña y pueden reintentarse al recuperar acceso, conforme al [contrato de sincronización](docs/contratos/sync.md). [D07/D16]
+La API bloquea las operaciones cuando la cuenta está vencida, incluidas las peticiones directas y los lotes offline. Las capturas rechazadas pueden reintentarse al recuperar el acceso y se conservan según la entidad y el [contrato de sincronización](docs/contratos/sync.md). [D07/D16]
 
 Siguen pendientes precios, moneda, vigencia, límites, flujo concreto de Stripe y renovaciones/cancelaciones/reembolsos. Elegir Stripe no elige automáticamente Checkout, Elements o un modelo de suscripción recurrente. [Detalles pendientes D07/D08]
 
@@ -498,7 +498,7 @@ La regla de conflicto documentada es **Last-Write-Wins por marca de modificació
 
 ### 10.2 Implementación conectada
 
-La cola de la aplicación conectada permanece en memoria de la pestaña y se limpia al cerrar sesión o cambiar de usuario. Cada operación lleva un UUID, cuenta, identificador de registro y marca UTC. El servidor revalida autorización y alcance, resuelve la escritura con bloqueo de la ocurrencia, persiste el resultado idempotente y responde por operación en lotes de hasta 25. Los empates favorecen al servidor. El alcance confirmado incluye visitas ya programadas y autorizadas, alta de necesidades y cambios de su estado. [Contrato de sincronización](docs/contratos/sync.md).
+Desde el 19/11/2026, las capturas de visitas autorizadas de Organización se guardan por usuario en IndexedDB. Se recuperan en el mismo navegador al volver a abrir CuidaRed con la misma identidad. El alta y los cambios de estado de necesidades se conservan en memoria de la pestaña y se limpian al terminar la sesión o cambiar de usuario. Cada operación lleva un UUID, cuenta, registro y marca UTC. El servidor revalida autorización y alcance, bloquea la ocurrencia al escribir y responde por operación en lotes de hasta 25. Los empates favorecen al servidor. [Contrato de sincronización](docs/contratos/sync.md).
 
 ## 11. Seguridad, privacidad y auditoría
 
@@ -599,7 +599,7 @@ Los siguientes escenarios derivan de los requisitos y sirven como lista de acept
 7. Reaparición del mismo tipo de necesidad y reevaluación del mismo factor sin perder historia.
    Para riesgo, comprobar las ponderaciones del cuestionario, máximos 30/40/30 y límites 29/30 y 54/55, además del máximo de factores vigentes. Sin factores vigentes, mostrar «Sin evaluación vigente», tanto sin historial como al dejar de tener factores activos; no heredar el nivel histórico ni asignar bajo por defecto.
 8. Visita programada/cancelada que no cuenta como contacto; realizada que sí cuenta; visita con varios adultos y permisos distintos.
-   Verificar además que solo Coordinador en Familia o Administrador/Coordinador en Organización pueden autorizar, y que una solicitud de otro rol es rechazada aunque manipule el JSON.
+   Verificar que solo Administrador o Coordinador de Organización pueda autorizar y que la API rechace las peticiones directas desde Familia.
 9. Alerta de seguimiento con 15 y 16 días, sin historial, con umbral de cuenta y cerca de medianoche en la zona acordada.
 10. Riesgo alto y medicamento pendiente de fuentes diferentes generan alertas independientes y un caso prioritario agrupado del adulto. Un reintento no duplica la misma causa. Los detalles de fuente y ciclo de vida requieren completar D06.
 11. Ejecución de tareas solo por persona autorizada. Cuando se requiere evidencia, rechazar el cierre sin adjunto, con evidencia pendiente o rechazada, y permitirlo al cumplir la validación autorizada. Reapertura/repetición y múltiples evidencias según detalles pendientes D12.
@@ -626,7 +626,7 @@ Fecha de las once confirmaciones: **24 de octubre de 2026**. Autoridad: respuest
 | D01 — Resuelta | SRS mezcla cuatro/cinco roles, escenarios antiguos y RF nuevos; frontend antiguo frente a reglas V2 | «V2 prevalece; conservar SRS donde V2 no lo contradiga». | V2 gobierna reglas de negocio: Cuidador separado, cuentas Familia/Organización, Voluntario sin gestión de necesidades, planes pagados y prueba única de 7 días. SRS complementa lo compatible. |
 | D02 — Resuelta | SQL, diagrama y diccionarios describen versiones diferentes | «Sí, DB.sql será la base técnica». | El modelo parte de S04 y registra ajustes para cumplir reglas aprobadas; no ejecutar el archivo como migración sin validación. |
 | D03 — Resuelta | Voluntario ocasional sin login frente a Auth obligatorio y FK a `auth.users` | «Cuenta e inicio de sesión con Supabase Auth». | Voluntario tiene identidad e inicia sesión; la autorización por visita y la relación con cuenta/plan aún requieren detalle. |
-| D05 — Autorizadores resueltos | V2 exige autorización previa, pero no identifica los roles autorizadores por cuenta | «Familia: Coordinador; Organización: Administrador o Coordinador». | Aplicar estos roles para autorizar visitas; solicitud, aceptación, cancelación y revocación aún necesitan detalle. |
+| D05 — Visitas y autorizadores | V2 exige autorización previa y la decisión original incluía a Familia. | El 19/11/2026 se restringió Visitas y Solicitudes a Organización. | Administrador o Coordinador autoriza antes de la ejecución. La API y la base restringen el módulo por tipo de cuenta. |
 | D06 — Resuelta para fase 6 | Una alerta agrupada de RF-04 frente a exactamente una fuente por alerta | «Una alerta por fuente y un caso prioritario agrupado en pantalla». | Las fuentes vigentes, el ciclo de vida, la deduplicación y los avisos internos aprobados se describen en el [contrato de alertas](docs/contratos/alertas.md). |
 | D07 — Proveedor y modalidad resueltos | No se había definido pasarela ni modalidad de pago del MVP | El usuario eligió Stripe exclusivamente en sandbox de pruebas, sin pagos reales, para el MVP. | Integrar pagos de prueba con Stripe; no usar modo live ni considerar resuelta la viabilidad comercial en República Dominicana. Flujo, precios y reglas de vigencia siguen pendientes. |
 | D07 — Acceso vencido resuelto | No se sabía si una cuenta vencida conservaría lectura operativa | «Solo acceder a su cuenta y gestionar la suscripción; bloquear módulos operativos». | Bloquear lectura y escritura operativas de la cuenta vencida; conservar acceso a cuenta/suscripción sin alterar permisos ni titularidad de pago. |

@@ -197,7 +197,9 @@ La trazabilidad persistente es la tabla `operacion_sync`.
 
 ## Cola de la aplicación conectada
 
-El usuario puede capturar desde la pestaña autenticada. La cola conserva las capturas en memoria, agrupadas por cuenta, y envía hasta 25 por lote al volver la conexión. El usuario puede reintentar o descartar rechazos. Al cambiar de usuario o finalizar la sesión se limpia la cola. Para iniciar un alta sin conexión se requieren los catálogos y expedientes ya consultados. La actualización de estado usa la versión de la ocurrencia que la aplicación tenía en memoria.
+La cola guarda las capturas de visitas de Organización en IndexedDB por usuario. El mismo usuario recupera las pendientes al abrir CuidaRed en el mismo navegador, incluso después de cerrar la pestaña. Las capturas se eliminan cuando el servidor confirma el resultado definitivo o cuando el usuario descarta un rechazo.
+
+Las capturas de necesidades permanecen en memoria y se limpian al cerrar la pestaña, finalizar la sesión o cambiar de usuario. La cola agrupa ambas clases de operación por cuenta y envía hasta 25 por lote al recuperar la conexión. Para registrar una necesidad sin conexión se requieren los catálogos y expedientes ya consultados. La actualización de estado usa la versión que la aplicación tenía en memoria.
 
 ## Persistencia
 
