@@ -33,6 +33,7 @@ import { createBackofficeRouter } from './modules/backoffice/backoffice-routes.j
 import { createLoggingMiddleware, createSystemLogger } from './lib/system-logger.js';
 import { auditAccess } from './modules/backoffice/backoffice-audit.js';
 import { createPublicoRouter } from './modules/publico/publico-routes.js';
+import { createReportesRouter } from './modules/reportes/reportes-routes.js';
 
 export function createApp({ env, gateway, audit, adminGateway = null, now = () => new Date() }) {
   const recordLog = createSystemLogger(adminGateway, audit);
@@ -68,7 +69,8 @@ export function createApp({ env, gateway, audit, adminGateway = null, now = () =
         },
         methods: ['GET', 'POST', 'PATCH', 'OPTIONS'],
         allowedHeaders: ['Authorization', 'Content-Type', 'X-Change-Reason'],
-        exposedHeaders: ['X-Request-Id'],
+        // Content-Disposition: nombre del CSV de reportes (fase 7).
+        exposedHeaders: ['X-Request-Id', 'Content-Disposition'],
         credentials: req.path.startsWith(`/api/v1${browserSessionPath}/`),
       }),
     ),
@@ -119,6 +121,7 @@ export function createApp({ env, gateway, audit, adminGateway = null, now = () =
   enCuenta.use(createAgendaRouter(deps));
   enCuenta.use(createNecesidadesRouter(deps));
   enCuenta.use(createAlertasRouter(deps));
+  enCuenta.use(createReportesRouter(deps));
   enCuenta.use(createSyncRouter(deps));
   api.use('/cuentas/:cuentaId', enCuenta);
   app.use('/api/v1', api);

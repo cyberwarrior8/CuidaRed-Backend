@@ -228,6 +228,24 @@ La evaluación inicial busca ocurrencias pendientes de prioridad alta en expedie
 
 **Verificación en Supabase.** El disparador está activo. La evaluación inicial creó una alerta pendiente para la única necesidad de Transporte elegible, un aviso interno para el administrador autorizado y una entrega Web Push. El emisor registró esa entrega como enviada.
 
+## CUIDARED-012 — Reportes (fase 7)
+
+**Estado.** Propuesta — no aplicada; validada en PostgreSQL local el 20/11/2026. Su aplicación en Supabase CuidaRed requiere la aprobación expresa del usuario. [Propuesta SQL](propuestas/fase-7-reportes.sql) y [contrato](contratos/reportes.md).
+
+**Alcance.** ID07; RF-07 (resumen de casos) y RF-08 (reportes estadísticos), exportaciones auditadas e informe médico V2. No crea tablas, columnas, índices, políticas ni permisos de la matriz, y no cambia datos existentes.
+
+| Objeto               | Cambio                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `cuidared_api`       | Agrega `api_resumen_casos_listar`, `api_resumen_casos_indicadores`, `api_reporte`, `api_reporte_avanzado`, `api_exportar_reporte_csv`, `api_registrar_exportacion_reporte` y `api_informe_medico` (`security definer`, `search_path` vacío, `execute` solo para `authenticated`). Reemplaza `api_auditoria_cuenta` con la misma firma: incluye las entidades `exportacion_reporte` e `informe_medico` de la cuenta con la acción `exportacion`. |
+| `cuidared_interno`   | Agrega las funciones `reporte_*` de comprobación de plan, filtros, meses, series, población, casos, cálculo por tipo de reporte y registro de exportaciones. No tienen `execute` para los roles de la API.                                                                                                                                                                                                                                      |
+| `cuidared.auditoria` | Sin cambios de estructura. Las RPC insertan filas con `tabla` `exportacion_reporte` o `informe_medico`, operación `I`, el actor y solo referencias (`cuenta_id`, tipo, formato, filtros o `envejeciente_id` y secciones omitidas), nunca el contenido exportado.                                                                                                                                                                                |
+
+Reutiliza `exigir`, `tiene_permiso`, `cuenta_tiene_funcionalidad` (`dashboard_metricas`, `reportes_avanzados`), `alcanza_envejeciente`, `membresia_activa`, `alerta_parametro`, `alerta_es_prioritaria`, `nivel_riesgo_vigente` y `hoy`. Las agregaciones usan los índices existentes por adulto. Todas las funciones usan `create or replace` y la propuesta puede reaplicarse.
+
+**Verificación local.** `node scripts/validar-propuestas-local.js --solo=reportes` carga en una base desechable todas las migraciones de `supabase/migrations/`, salvo las dos que solo programan Supabase Cron, con Auth simulado ([metadatos previos](verificacion/local/datos-previos-reportes.sql)). Después aplica la propuesta y ejecuta [`pruebas-7-*.sql`](verificacion/local/): permisos por rol y tipo de cuenta, plan, cuenta vencida, privilegios, aislamiento entre cuentas, alcance del Cuidador, omisión de secciones, conciliación de totales con las filas fuente, alertas frente a adultos prioritarios, vacíos, fechas de Santo Domingo, auditoría y carga de 2.000 adultos con 6.000 visitas. Con estadísticas del planificador, la RPC más lenta de la carga tardó 147 ms; las agregaciones se calculan una vez por cuenta. La propuesta se reaplicó sobre la misma base sin errores.
+
+**Verificación en Supabase.** Pendiente de aprobación y aplicación.
+
 ## Backoffice CuidaRed · 14/11/2026
 
 | Campo        | Registro                                                                                                                                                                                                                                                |

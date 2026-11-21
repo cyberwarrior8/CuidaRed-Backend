@@ -1,5 +1,23 @@
 # Cambios actuales
 
+## 20/11/2026 — Fase 7 (Reportes) y cierre de código de la fase 6
+
+**Decisiones del usuario:** formatos CSV y PDF, con Excel solo en el plan avanzado; matriz de permisos actual con el plan comprobado en el servidor; informe médico con el contenido del prototipo. Lo que no definen V2 ni el SRS queda como propuesta técnica D20–D22 en `CONTEXTO-BACKEND.md`.
+
+- **Reportes (fase 7):** el módulo nuevo `src/modules/reportes/` tiene rutas, esquemas Zod, servicio, repositorio y CSV, montados en `src/app.js` bajo `/api/v1/cuentas/:cuentaId`:
+  - Resumen de casos (RF-07) con indicadores. Distingue alertas abiertas de adultos prioritarios.
+  - Cuatro reportes estadísticos (RF-08): adultos, visitas, necesidades y casos prioritarios.
+  - Análisis avanzado por zona, municipio y mes.
+  - CSV auditado y registro previo de PDF/Excel.
+  - Informe médico por adulto.
+  - Todas las respuestas llevan `Cache-Control: no-store` y `Content-Disposition` queda expuesto por CORS. Contrato: [reportes](docs/contratos/reportes.md).
+- **Auditoría:** `GET /auditoria` muestra las exportaciones y los informes con la acción `exportacion` (`src/modules/cuentas/cuenta-routes.js`).
+- **SQL sin aplicar:** `docs/propuestas/fase-7-reportes.sql` (CUIDARED-012) agrega siete RPC y funciones internas `reporte_*`, sin tablas ni índices nuevos, y redefine `api_auditoria_cuenta` con la misma firma. Las pruebas `docs/verificacion/local/pruebas-7-*.sql` se ejecutan con `npm run validar:sql -- --solo=reportes`, que carga todas las migraciones aplicadas salvo las de Cron. **Aplicarla en Supabase requiere aprobación**; hasta entonces las rutas de reportes fallan contra el proyecto compartido.
+- **Alertas (fase 6):** `tests/alertas.test.js` pasa de 3 a 59 casos (filtros, orden, detalle, atención, resolución por rol, avisos, lectura, casos prioritarios, permisos, UUID y cuenta vencida). No se encontraron fallos en `src/modules/alertas/`. Nuevo [guion de prueba manual](docs/verificacion/manual-fase-6-alertas.md) por rol, todavía sin ejecutar.
+- **Por confirmar:** la evaluación de ausencia de visitas (RF-05) no distingue el tipo de cuenta. Como Familia ya no tiene Visitas, sus adultos tendrían una alerta de seguimiento a los 16 días que solo se cierra a mano.
+- **Revisión independiente:** las tendencias se recortan al periodo pedido. Los filtros con valor nulo se aceptan igual en Express y en SQL. Las métricas de visitas del análisis avanzado salen nulas sin `visitas:ver`. Los códigos de catálogo antiguos del informe pueden ser nulos. El CSV neutraliza fórmulas después de espacios y con signos de ancho completo. Las consultas se reescribieron por cuenta en lugar de por adulto.
+- **Validación:** `npm run lint` sin errores, 25 archivos y 1277 pruebas aprobadas, y Prettier en los archivos tocados. `validar:sql` pasó con `--solo=reportes`, `fases-5-6`, `visitas`, `web-push`, `cierre` e `integracion`. Con 2.000 adultos y 6.000 visitas, la consulta más lenta tardó 147 ms; la prueba de carga falla si alguna llega a 1,5 s.
+
 ## 19/11/2026 — Integración de visitas y Backoffice
 
 - La API combina las visitas programadas, el seguimiento de solicitudes y la validación de evidencias con Backoffice, la sesión protegida del navegador, alertas y Web Push. El formulario público se habilita por entorno.
