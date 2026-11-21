@@ -13,6 +13,7 @@ export const ASPECTOS_VISITA = [
   'vivienda',
   'animo',
   'movilidad',
+  'caidas',
 ];
 export const ESTADOS_SOLICITUD = ['pendiente', 'autorizada', 'rechazada', 'realizada', 'cancelada'];
 
@@ -56,11 +57,26 @@ export const sinCuerpoSchema = z.strictObject({});
 export const programarVisitaSchema = z.strictObject({
   fecha,
   hora_programada: hora,
+  hora_fin_programada: hora.optional(),
+  autorizar: z.boolean().optional(),
   razon: texto(3, 120),
   notas: texto(1, 300).nullish(),
   envejeciente_ids: z.array(uuid).min(1).max(4).refine(sinRepetidos),
   participante_ids: z.array(uuid).min(1).max(3).refine(sinRepetidos),
 });
+
+export const programarVisitasRecurrentesSchema = programarVisitaSchema
+  .omit({ autorizar: true })
+  .extend({
+    repeticion: z.discriminatedUnion('frecuencia', [
+      z.strictObject({ frecuencia: z.literal('diaria'), hasta: fecha }),
+      z.strictObject({
+        frecuencia: z.literal('semanal'),
+        hasta: fecha,
+        dias_semana: z.array(z.number().int().min(1).max(7)).min(1).max(7).refine(sinRepetidos),
+      }),
+    ]),
+  });
 
 const detalleSchema = z.strictObject({
   envejeciente_id: uuid,
@@ -71,36 +87,51 @@ const detalleSchema = z.strictObject({
 const camposRegistro = {
   detalles: z
     .array(detalleSchema)
-    .min(1)
     .max(4)
     .refine((items) => sinRepetidos(items.map((d) => d.envejeciente_id))),
-  checklist: z.array(z.enum(ASPECTOS_VISITA)).max(6).refine(sinRepetidos).nullish(),
+  checklist: z
+    .array(z.enum(ASPECTOS_VISITA))
+    .max(ASPECTOS_VISITA.length)
+    .refine(sinRepetidos)
+    .nullish(),
   hora_inicio: hora.nullish(),
   hora_fin: hora.nullish(),
+  observacion_general: texto(3, 1000).optional(),
 };
 
-export const registrarVisitaSchema = z.strictObject(camposRegistro);
-
-export const visitaRealizadaSchema = z.strictObject({
-  // Id generado por el cliente: un reintento con el mismo id no duplica la visita (idempotencia).
-  visita_id: uuid.nullish(),
-  fecha: fecha.nullish(),
-  razon: texto(3, 120).nullish(),
-  ...camposRegistro,
-});
+export const registrarVisitaSchema = z
+  .strictObject(camposRegistro)
+  .refine((datos) => datos.detalles.length > 0 || !!datos.observacion_general, {
+    message: 'Indica los detalles o el informe de la visita institucional.',
+  });
 
 export const cancelarVisitaSchema = z.strictObject({ motivo: texto(3, 300) });
 
-export const autorizarSolicitudSchema = z.strictObject({
-  envejeciente_id: uuid,
-  fecha,
-  hora,
-});
+export const autorizarSolicitudSchema = z
+  .strictObject({
+    envejeciente_id: uuid.optional(),
+    fecha,
+    hora,
+    hora_fin_programada: hora.optional(),
+    participante_id: uuid.optional(),
+  })
+  .refine((datos) => !!datos.envejeciente_id || !!datos.participante_id, {
+    message: 'Asigna una persona responsable a la visita institucional.',
+  });
 export const rechazarSolicitudSchema = z.strictObject({ motivo: texto(3, 300) });
+export const reprogramarVisitaSchema = z.strictObject({ fecha, hora, hora_fin_programada: hora });
+export const revisarEvidenciaVisitaSchema = z.strictObject({ motivo: texto(5, 200).optional() });
 
 // Listados (CR-162): orden y filtros con lista cerrada; los filtros usan la sintaxis filter[campo]=valor.
 export const readVisitasQuery = createCollectionQuery({
-  sortableFields: ['fecha', 'hora_programada', 'estado', 'fecha_creacion', 'visita_id'],
+  sortableFields: [
+    'fecha',
+    'hora_programada',
+    'estado',
+    'fecha_creacion',
+    'fecha_evento',
+    'visita_id',
+  ],
   defaultSort: '-fecha,-hora_programada',
   tieBreaker: 'visita_id',
   filterSchemas: {

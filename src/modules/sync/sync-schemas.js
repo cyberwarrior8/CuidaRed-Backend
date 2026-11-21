@@ -1,7 +1,11 @@
-/* Contratos de entrada de la sincronización de visitas sin conexión · RF-10, RF-4.5, RNF-4.2. © 2026 Equipo CuidaRed – INTEC. */
+/* Contratos de sincronización de visitas y necesidades · RF-10, RF-4.5, RNF-4.2. © 2026 Equipo CuidaRed – INTEC. */
 import { z } from 'zod';
 import { AppError } from '../../lib/errors.js';
-import { sinNulos, visitaRealizadaSchema } from '../visitas/visitas-schemas.js';
+import {
+  cambiarEstadoNecesidadSchema,
+  crearNecesidadSchema,
+} from '../necesidades/necesidades-schemas.js';
+import { registrarVisitaSchema, sinNulos } from '../visitas/visitas-schemas.js';
 
 // Propuesta técnica (D16): lote de hasta 25 operaciones, el tamaño que ya usa el cliente (TAMANO_LOTE).
 export const MAX_OPERACIONES = 25;
@@ -31,8 +35,8 @@ const loteSchema = z.strictObject({
 
 /*
  * Operación del cliente. `entidad` y `tipo` admiten cualquier nombre bien formado: lo que no se soporta se responde por
- * operación (ENTIDAD_NO_SOPORTADA, TIPO_NO_SOPORTADO) en lugar de rechazar el lote, y así los pendientes de una entidad
- * que llegue en una fase posterior (necesidades, fase 5) no se pierden. El usuario, la cuenta y el rol nunca vienen aquí.
+ * operación (ENTIDAD_NO_SOPORTADA, TIPO_NO_SOPORTADO) en lugar de rechazar el lote. El usuario, la cuenta y el rol no
+ * vienen en la entrada.
  */
 const operacionSchema = z.strictObject({
   id_cliente: uuid,
@@ -45,14 +49,17 @@ const operacionSchema = z.strictObject({
 });
 
 /*
- * Datos por entidad y tipo (punto de extensión: la fase 5 agrega `necesidad`). Cada esquema es el de la API en línea:
- * `registrar` equivale a POST /visitas/realizada sin `visita_id` (el id de la visita es `registro_id`) e `iniciar` a
- * POST /visitas/:id/iniciar, que no lleva datos.
+ * Reutiliza los cuerpos de la API en línea. El alta de necesidad agrega el adulto en el cuerpo y usa el UUID local
+ * en registro_id; las demás operaciones se refieren a registros existentes.
  */
 const ENTIDADES = Object.freeze({
   visita: Object.freeze({
-    registrar: visitaRealizadaSchema.omit({ visita_id: true }),
+    registrar: registrarVisitaSchema,
     iniciar: z.strictObject({}),
+  }),
+  necesidad: Object.freeze({
+    registrar: crearNecesidadSchema.safeExtend({ envejeciente_id: z.guid() }),
+    cambiar_estado: cambiarEstadoNecesidadSchema,
   }),
 });
 
@@ -96,6 +103,9 @@ export function leerOperacion(raw) {
   });
   if (!base.success) return invalida();
   const { datos, base_actualizado_en: baseMarca, ...resto } = base.data;
+  if (resto.entidad === 'necesidad' && resto.tipo === 'registrar' && baseMarca != null) {
+    return invalida();
+  }
   const schema = datosSchema(resto.entidad, resto.tipo);
   let datosValidos = {};
   if (schema) {

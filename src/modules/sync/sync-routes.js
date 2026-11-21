@@ -1,4 +1,4 @@
-/* Sincronización de visitas sin conexión (LWW, idempotencia) · ID04/RF-10. © 2026 Equipo CuidaRed – INTEC. */
+/* Sincronización de visitas y necesidades sin conexión · ID04, ID05, RF-10. © 2026 Equipo CuidaRed – INTEC. */
 import { Router } from 'express';
 import { AppError } from '../../lib/errors.js';
 import { requirePermiso } from '../cuentas/require-cuenta.js';
@@ -33,20 +33,23 @@ export function createSyncRouter({ audit }) {
 
   router.post('/sync', requireSyncUsar, async (req, res) => {
     const operaciones = leerLote(req.body);
-    const resultados = await service(res).procesar(
-      Number(res.locals.cuenta.cuentaId),
-      operaciones,
-      {
-        requestId: res.locals.requestId,
-        actorId: res.locals.access.identity.id,
-      },
-    );
+    const resultados = await service(res).procesar(res.locals.cuenta.cuentaId, operaciones, {
+      requestId: res.locals.requestId,
+      actorId: res.locals.access.identity.id,
+    });
+    res.locals.syncEvents = resultados
+      .filter((item) => ['rechazada', 'conflicto'].includes(item.resultado))
+      .map((item) => ({
+        code: item.resultado === 'conflicto' ? 'SYNC_CONFLICT' : 'SYNC_REJECTED',
+        reason: item.motivo,
+        winner: item.gana,
+      }));
     res.json({ data: { resultados } });
   });
 
-  router.get('/sync/:idCliente', requirePermiso('sync:usar'), async (req, res) => {
+  router.get('/sync/:idCliente', requireSyncUsar, requirePermiso('sync:usar'), async (req, res) => {
     const resultado = await service(res).obtener(
-      Number(res.locals.cuenta.cuentaId),
+      res.locals.cuenta.cuentaId,
       uuidParam(req.params.idCliente),
     );
     res.json({ data: resultado });

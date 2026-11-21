@@ -34,7 +34,7 @@ const contexto = (rol, tipo, extra = {}) => ({
 });
 
 const CONTACTO = {
-  contacto_id: 31,
+  contacto_id: '31',
   envejeciente_id: ADULTO,
   nombres: 'Luis',
   apellidos: 'Peña',
@@ -246,7 +246,7 @@ describe('ID03: listado paginado con alcance por rol', () => {
     const { call, rpc } = setup({ respuestas: { api_listar_envejecientes: listado } });
     const res = await call('get', '/envejecientes').expect(200);
     expect(rpc).toHaveBeenCalledWith('api_listar_envejecientes', {
-      p_cuenta_id: CUENTA,
+      p_cuenta_id: String(CUENTA),
       p_estado: null,
       p_municipio_cod: null,
       p_orden: ['apellidos', 'nombres', 'fecha_creacion', 'envejeciente_id'],
@@ -270,7 +270,7 @@ describe('ID03: listado paginado con alcance por rol', () => {
       })
       .expect(200);
     expect(rpc).toHaveBeenCalledWith('api_listar_envejecientes', {
-      p_cuenta_id: CUENTA,
+      p_cuenta_id: String(CUENTA),
       p_estado: 'inactivo',
       p_municipio_cod: '0102',
       p_orden: ['-fecha_creacion', 'nombres', 'envejeciente_id'],
@@ -378,7 +378,7 @@ describe('ID03: alta del perfil con consentimiento y contactos', () => {
     expect(llamadas()).toHaveLength(1);
     const [nombre, params] = rpc.mock.calls.at(-1);
     expect(nombre).toBe('api_crear_envejeciente');
-    expect(params.p_cuenta_id).toBe(CUENTA);
+    expect(params.p_cuenta_id).toBe(String(CUENTA));
     expect(params.p_datos).toEqual({
       nombres: 'Rosa María',
       apellidos: 'Peña Díaz',
@@ -645,7 +645,7 @@ describe('ID03: consulta del perfil por nivel de visibilidad', () => {
       const { call, rpc } = setup({ rol, tipo, respuestas: ver });
       const { body } = await call('get', `/envejecientes/${ADULTO}`).expect(200);
       expect(rpc).toHaveBeenCalledWith('api_ver_envejeciente', {
-        p_cuenta_id: CUENTA,
+        p_cuenta_id: String(CUENTA),
         p_envejeciente_id: ADULTO,
       });
       expect(body.data.cedula).toBe('00112345678');
@@ -726,7 +726,7 @@ describe('ID03: edición del perfil', () => {
       .send({ cedula: '001-1234567-8', telefono: ' 809-555-0100 ', zona: ' Gazcue  Norte ' })
       .expect(200);
     expect(rpc).toHaveBeenCalledWith('api_editar_envejeciente', {
-      p_cuenta_id: CUENTA,
+      p_cuenta_id: String(CUENTA),
       p_envejeciente_id: ADULTO,
       p_datos: { cedula: '00112345678', telefono: '8095550100', zona: 'Gazcue Norte' },
     });
@@ -820,7 +820,7 @@ describe('ID03: cambio de estado del adulto (CR-172)', () => {
       .send({ estado: 'inactivo', motivo: '  Se   mudó ' })
       .expect(200);
     expect(rpc).toHaveBeenCalledWith('api_estado_envejeciente', {
-      p_cuenta_id: CUENTA,
+      p_cuenta_id: String(CUENTA),
       p_envejeciente_id: ADULTO,
       p_estado: 'inactivo',
       p_motivo: 'Se mudó',
@@ -900,14 +900,14 @@ describe('ID03: cambio de estado del adulto (CR-172)', () => {
 
 describe('ID03/RF-17: contactos de emergencia', () => {
   it('lista los contactos del adulto con el principal primero', async () => {
-    const otro = { ...CONTACTO, contacto_id: 32, es_principal: false };
+    const otro = { ...CONTACTO, contacto_id: '32', es_principal: false };
     const { call, rpc } = setup({
       rol: 'cuidador',
       respuestas: { api_listar_contactos: [CONTACTO, otro] },
     });
     const res = await call('get', `/envejecientes/${ADULTO}/contactos`).expect(200);
     expect(rpc).toHaveBeenCalledWith('api_listar_contactos', {
-      p_cuenta_id: CUENTA,
+      p_cuenta_id: String(CUENTA),
       p_envejeciente_id: ADULTO,
     });
     expect(res.body.data).toEqual([CONTACTO, otro]);
@@ -936,14 +936,14 @@ describe('ID03/RF-17: contactos de emergencia', () => {
   });
 
   describe('alta', () => {
-    const nuevo = { ...CONTACTO, contacto_id: 32, nombres: 'Eva', es_principal: false };
+    const nuevo = { ...CONTACTO, contacto_id: '32', nombres: 'Eva', es_principal: false };
     it('crea un contacto no principal por defecto y normaliza el teléfono', async () => {
       const { call, rpc, audit } = setup({ respuestas: { api_crear_contacto: nuevo } });
       const res = await call('post', `/envejecientes/${ADULTO}/contactos`)
         .send(otroContacto())
         .expect(201);
       expect(rpc).toHaveBeenCalledWith('api_crear_contacto', {
-        p_cuenta_id: CUENTA,
+        p_cuenta_id: String(CUENTA),
         p_envejeciente_id: ADULTO,
         p_datos: {
           nombres: 'Eva',
@@ -953,7 +953,7 @@ describe('ID03/RF-17: contactos de emergencia', () => {
           es_principal: false,
         },
       });
-      expect(res.body.data.contacto_id).toBe(32);
+      expect(res.body.data.contacto_id).toBe('32');
       expect(audit).toHaveBeenCalledWith(
         expect.objectContaining({ action: 'adulto.contact_created' }),
       );
@@ -1002,8 +1002,8 @@ describe('ID03/RF-17: contactos de emergencia', () => {
       const { call, rpc, audit } = setup({ respuestas: { api_editar_contacto: CONTACTO } });
       await call('patch', '/contactos/31').send({ telefono: '829 555 0102' }).expect(200);
       expect(rpc).toHaveBeenCalledWith('api_editar_contacto', {
-        p_cuenta_id: CUENTA,
-        p_contacto_id: 31,
+        p_cuenta_id: String(CUENTA),
+        p_contacto_id: '31',
         p_datos: { telefono: '8295550102' },
       });
       expect(audit).toHaveBeenCalledWith(
@@ -1020,7 +1020,7 @@ describe('ID03/RF-17: contactos de emergencia', () => {
       await call('patch', '/contactos/31').send(cuerpo).expect(422);
       expect(llamadas()).toHaveLength(0);
     });
-    it.each(['abc', '0', '-1', '1.5', '31x', '1234567890123456'])(
+    it.each(['abc', '0', '-1', '1.5', '31x', '9223372036854775808'])(
       'el identificador de contacto %s es 404 y no llega a la base',
       async (id) => {
         const { call, llamadas } = setup({
@@ -1034,28 +1034,28 @@ describe('ID03/RF-17: contactos de emergencia', () => {
     );
     it('cambia el principal con una sola llamada atómica', async () => {
       const { call, rpc, llamadas, audit } = setup({
-        respuestas: { api_principal_contacto: { ...CONTACTO, contacto_id: 32 } },
+        respuestas: { api_principal_contacto: { ...CONTACTO, contacto_id: '32' } },
       });
       const res = await call('post', '/contactos/32/principal').send({}).expect(200);
       expect(llamadas()).toHaveLength(1);
       expect(rpc).toHaveBeenCalledWith('api_principal_contacto', {
-        p_cuenta_id: CUENTA,
-        p_contacto_id: 32,
+        p_cuenta_id: String(CUENTA),
+        p_contacto_id: '32',
       });
-      expect(res.body.data).toMatchObject({ contacto_id: 32, es_principal: true });
+      expect(res.body.data).toMatchObject({ contacto_id: '32', es_principal: true });
       expect(audit).toHaveBeenCalledWith(
         expect.objectContaining({ action: 'adulto.contact_principal_changed' }),
       );
     });
     it('elimina un contacto con 204 y sin cuerpo', async () => {
       const { call, rpc, audit } = setup({
-        respuestas: { api_eliminar_contacto: { contacto_id: 32, eliminado: true } },
+        respuestas: { api_eliminar_contacto: { contacto_id: '32', eliminado: true } },
       });
       const res = await call('post', '/contactos/32/eliminar').send({}).expect(204);
       expect(res.text).toBe('');
       expect(rpc).toHaveBeenCalledWith('api_eliminar_contacto', {
-        p_cuenta_id: CUENTA,
-        p_contacto_id: 32,
+        p_cuenta_id: String(CUENTA),
+        p_contacto_id: '32',
       });
       expect(audit).toHaveBeenCalledWith(
         expect.objectContaining({ action: 'adulto.contact_deleted' }),

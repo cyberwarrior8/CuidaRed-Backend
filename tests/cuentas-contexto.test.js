@@ -63,7 +63,7 @@ describe('RF-11: cuenta activa por ruta', () => {
   it('resuelve el contexto con el id de la ruta y lo expone a la ruta', async () => {
     const rpc = vi.fn().mockResolvedValue(contexto());
     const res = await request(appCon(rpc)).get('/cuentas/7/x').expect(200);
-    expect(rpc).toHaveBeenCalledWith('api_contexto_cuenta', { p_cuenta_id: 7 });
+    expect(rpc).toHaveBeenCalledWith('api_contexto_cuenta', { p_cuenta_id: '7' });
     expect(res.body.data.rol).toBe('coordinador');
   });
   it.each(['0', 'abc', '-1', '1.5', '99999999999999999999'])(

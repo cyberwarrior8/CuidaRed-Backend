@@ -4,7 +4,7 @@
 
 ID03 · RF-12, RF-13, RF-14, RF-15 y RF-3.4 (CU-06) · Reglas de Negocio V2. Cubre asignaciones de cuidadores y voluntarios, permiso familiar explícito, evaluación y factores de riesgo, indicaciones médicas e historial consolidado. El perfil, los contactos y la baja del adulto pertenecen al bloque 3a.
 
-**Estado:** código y pruebas con gateway simulado (`tests/seguimiento.test.js`) y persistencia como **propuesta SQL sin aplicar** (`docs/propuestas/fase-3b-seguimiento.sql`, validada solo en un PostgreSQL local con `auth` simulado; no certifica RLS ni Auth de Supabase). Nada de esto toca la base remota. Las decisiones abiertas se marcan «Propuesta técnica (Dxx)» y esperan confirmación.
+**Estado:** el bloque 3b está aplicado. El catálogo adicional de riesgos, el requisito de perfil vigente para el Cuidador y los adjuntos médicos forman parte de la [propuesta de cierre](../CAMBIOS-SCHEMA-CUIDARED.md#cuidared-008--correcciones-de-las-fases-2-a-4).
 
 Aplican `docs/CONVENCIONES-API.md` (CR-162) y el contexto de cuenta de la fase 2: todas las rutas cuelgan de `/api/v1/cuentas/:cuentaId`, exigen `Authorization: Bearer <access_token>` y pasan por `requireCuenta`. La cuenta **nunca** concede acceso por sí misma, y el actor, la cuenta efectiva, el rol o los resultados calculados (puntaje, nivel) **nunca** se aceptan del cuerpo: los cuerpos son `strictObject` y un campo extra se rechaza con 422.
 
@@ -47,7 +47,7 @@ Los permisos resultan de la matriz de la fase 2 (`src/modules/cuentas/permisos.j
 ### Asignaciones y permiso familiar (RF-12, RF-13)
 
 - **Consultar.** Los gestores (`adultos:asignar` o `familiares:autorizar`) reciben `cuidadores`, `voluntarios` y `familiares`, cada uno con `{ envejeciente_id, usuario_id, tipo, nombres, apellidos, autorizado_por_usuario_id, fecha_autorizacion }`. El resto recibe solo `cuidadores` y `voluntarios` con `{ nombres, apellidos }` (sin ids, contacto ni familiares). Solo aparecen vínculos vigentes de quien conserva su membresía activa con el rol esperado.
-- **Asignar.** El usuario debe tener una **membresía activa con el rol correspondiente** en la cuenta (cuidador para `cuidador_asignado`, voluntario para `voluntario_asignado`) o se responde 422 `ROLE_NOT_COMPATIBLE` (no se distingue «no existe»). El voluntario solo existe en Organización: en Familia, 422 `ROLE_NOT_ALLOWED`. La PK `(envejeciente, usuario)` permite un único vínculo por pareja: **reasignar actualiza la fila**, registra al nuevo autorizador y limpia la revocación; si ya está vigente con el mismo tipo no cambia nada. Todos los cuidadores asignados están al mismo nivel (sin cuidador principal).
+- **Asignar.** El usuario necesita una membresía activa con el rol correspondiente en la cuenta. Un rol incompatible devuelve 422 `ROLE_NOT_COMPATIBLE`. El rol Voluntario solo está disponible en Organización. Un índice permite un solo vínculo vigente por pareja. Reasignar abre un periodo y conserva el anterior. Repetir una asignación vigente y explícita del mismo tipo conserva la fila. Todos los cuidadores asignados están al mismo nivel.
 - **Autorizar familiar.** Debe ser un miembro activo con rol familiar (422 `ROLE_NOT_COMPATIBLE`). El permiso es por adulto, lo registra quien autoriza y es revocable.
 - **Revocar.** Conserva fila, fecha y motivo (`fecha_revocacion`, `motivo_revocacion`); el acceso se pierde de inmediato. Revocar algo inexistente, ya revocado o de otro tipo es 404.
 - Un adulto no activo no admite asignaciones nuevas (409 `ADULT_INACTIVE`); revocar siempre se permite.
@@ -119,7 +119,8 @@ La plataforma solo transcribe lo indicado por personal de salud; no determina tr
 - **Crear.** `{ tipo_indicacion_id, titulo (3–80), descripcion? (≤ 300), frecuencia_horario? (≤ 60), fecha_inicio (YYYY-MM-DD), fecha_fin? (≥ inicio) }`. Nace `activa`; guarda `registrado_por` y `actualizado_por`. Un vacío equivale a `null`.
 - **Editar (PATCH).** Mismos campos, todos opcionales y al menos uno; `null` limpia un campo opcional, omitirlo lo conserva. No cambia el estado. Una indicación `finalizada` no se edita (409 `INVALID_STATE`).
 - **Estado (Propuesta técnica D10).** `activa ⇄ suspendida`; `activa | suspendida → finalizada`; `finalizada` es terminal. Repetir el estado actual no cambia nada.
-- **Listar.** Orden `sort` por `fecha_inicio` (predeterminado, descendente), `fecha_creacion` o `indicacion_medica_id`, con desempate fijo por `indicacion_medica_id`; un orden de varios campos o un desempate descendente se rechaza con 422. `filter[estado]` (igualdad). El familiar autorizado consulta; el voluntario no tiene el permiso. No se expone `evidencia_url` (archivos: D13 pendiente).
+- **Listar.** Orden `sort` por `fecha_inicio` (predeterminado, descendente), `fecha_creacion` o `indicacion_medica_id`, con desempate fijo por `indicacion_medica_id`; un orden de varios campos o un desempate descendente se rechaza con 422. `filter[estado]` (igualdad). El familiar autorizado consulta. Los adjuntos registrados se consultan por su propia ruta y las URL históricas quedan bajo custodia.
+- **Adjuntos privados.** `POST /indicaciones/:indicacionId/evidencias/subida` recibe `nombre_archivo`, `tipo_mime` y `tamano_bytes`. Devuelve bucket y ruta. Tras subir el archivo, `POST /indicaciones/:indicacionId/evidencias` recibe los mismos metadatos y `ruta`, y devuelve su ID. Ambas rutas requieren permiso para editar una indicación sin finalizar de un adulto activo. `GET /indicaciones/:indicacionId/evidencias` exige permiso de lectura y responde metadatos mínimos y URL de cinco minutos. Se admiten JPG, PNG, WebP o PDF de hasta 5 MB.
 - Cada indicación: `{ indicacion_medica_id, envejeciente_id, tipo_indicacion_id, tipo, titulo, descripcion, frecuencia_horario, fecha_inicio, fecha_fin, estado, registrado_por, actualizado_por, fecha_creacion, fecha_actualizacion }`.
 
 ### Historial consolidado (RF-3.4 / CU-06)
@@ -160,7 +161,7 @@ Públicos según CR-162. Los códigos `CR_*` de las RPC se registran en `src/mod
 
 `docs/propuestas/fase-3b-seguimiento.sql`, sobre `fase-2a-base.sql`:
 
-- **`vinculo`**: `autorizado_por_usuario_id`, `fecha_autorizacion` (no nula; los vínculos previos se tratan como concedidos al crearse), `fecha_revocacion`, `motivo_revocacion`; `alcanza_envejeciente` se reemplaza (misma firma y semántica) y exige `fecha_revocacion is null`.
+- El bloque 2a agrega `vinculo_id`, autoría, fecha de autorización y datos de revocación. `alcanza_envejeciente` exige un vínculo vigente a Cuidador y Voluntario. Para Familiar exige además un autorizador registrado. Las fechas de creación previas se conservan como tales.
 - **`evaluacion_riesgo`** (tabla nueva, RLS y `revoke`): `evaluacion_riesgo_id`, `envejeciente_id`, `respuestas jsonb`, `puntaje smallint` (0–100), `desglose jsonb`, `nivel_riesgo_id`, `version_cuestionario`, `envejeciente_riesgo_id` (factor que la generó), `usuario_id`, `fecha`.
 - **`envejeciente_riesgo`**: `registrado_por`, `fecha_resolucion`, `resuelto_por` e índice único parcial: **un solo factor activo por adulto y tipo de factor**.
 - **`indicacion_medica`**: `registrado_por`, `actualizado_por`.

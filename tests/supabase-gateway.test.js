@@ -44,6 +44,30 @@ describe('adaptador Supabase con contexto del usuario', () => {
       status: 503,
     });
   });
+  it('renueva con Supabase y devuelve las credenciales rotadas al servidor', async () => {
+    const fetch = vi.fn().mockImplementation(async () =>
+      json({
+        access_token: 'jwt-renovado',
+        refresh_token: 'renovacion-nueva',
+        expires_in: 3600,
+        token_type: 'bearer',
+        user,
+      }),
+    );
+    const renewed = await createSupabaseGateway(env, fetch).refreshBrowserSession(
+      'renovacion-anterior',
+    );
+    expect(renewed).toMatchObject({
+      access_token: 'jwt-renovado',
+      refresh_token: 'renovacion-nueva',
+    });
+    expect(fetch.mock.calls[0][0]).toBe(
+      'https://auth.example.test/auth/v1/token?grant_type=refresh_token',
+    );
+    expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual({
+      refresh_token: 'renovacion-anterior',
+    });
+  });
   it('aísla tokens de peticiones simultáneas y selecciona esquema explícito', async () => {
     const calls = [];
     const fetch = vi.fn(async (url, init) => {

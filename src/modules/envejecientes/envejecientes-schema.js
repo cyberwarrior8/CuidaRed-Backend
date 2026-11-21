@@ -1,5 +1,6 @@
 /* Contratos de entrada y salida de perfiles de adultos mayores y contactos · RF-01/RF-17. © 2026 Equipo CuidaRed – INTEC. */
 import { z } from 'zod';
+import { jsonBigintId } from '../../lib/bigint-id.js';
 import { businessError } from '../../lib/business-errors.js';
 import { createCollectionQuery } from '../../lib/collection-query.js';
 import { unavailable } from '../../lib/errors.js';
@@ -230,10 +231,9 @@ function esFila(fila) {
 }
 
 export function serializeContacto(contacto) {
-  if (!contacto || typeof contacto !== 'object' || typeof contacto.contacto_id !== 'number') {
-    throw unavailable();
-  }
-  return pick(contacto, CAMPOS_CONTACTO);
+  const id = jsonBigintId.safeParse(contacto?.contacto_id);
+  if (!id.success) throw unavailable();
+  return { ...pick(contacto, CAMPOS_CONTACTO), contacto_id: id.data };
 }
 
 /** Perfil completo (detalle). Un contrato roto de la base es indisponibilidad, no un dato vacío. */

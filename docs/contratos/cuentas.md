@@ -27,7 +27,7 @@ Solo `GET`, `POST` y `PATCH`. `organizacion:configurar` y `cuenta:suscripcion` e
 
 ### Alta de cuenta (`POST /cuentas`)
 
-Autorregistro del titular (decisión del usuario, 2026-11-06). La RPC `api_registrar_cuenta` toma la identidad de `auth.uid()` y, en una sola transacción: crea la cuenta con `suscripcion_estado = 'prueba'`, `prueba_gratuita = true`, `fecha_inicio_prueba = hoy`, `fecha_fin_prueba = hoy + 7`, `plan_id = null`; hace titular al usuario y crea su membresía **activa** con el rol de titular (`coordinador` en Familia, `administrador` en Organización). El cliente no envía ni puede influir en titular, rol, estado, plan ni fechas (el cuerpo es estricto: cualquier campo extra es 422).
+La RPC `api_registrar_cuenta` toma la identidad de `auth.uid()`. En una transacción crea la cuenta en prueba, fija el inicio al instante de creación y el fin 168 horas después, y crea la membresía activa del titular como Coordinador en Familia o Administrador en Organización. La prueba comienza con `plan_id = null`. Enviar campos de titular, rol, estado, plan o fechas devuelve 422.
 
 - `tipo`: `familia` | `organizacion`. `categoria_cuenta_id`: entero; debe ser una categoría activa **del mismo tipo** de cuenta.
 - `nombre`: 2–120 caracteres. `municipio_cod`: `^[0-9]{4,6}$` y existente en `cuidared.municipio`. `direccion`: hasta 150. `correo`: formato de correo, hasta 254, se guarda en minúsculas.
@@ -160,13 +160,13 @@ Auditoría: Express registra `cuenta.config_updated` (sin los valores, solo acto
 }
 ```
 
-- Para todos los miembros: `estado`, `acceso_operativo`, `prueba` (inicio, fin y `dias_restantes`; el último día cuenta 0 días pero sigue vigente), `plan` actual (o `null` en prueba; si la cuenta venció se conserva el último plan), `fecha_fin_vigencia`, `limites`, `uso` y `funcionalidades`.
+- Para todos los miembros se devuelve `estado`, `acceso_operativo`, `prueba` con inicio, fin y `dias_restantes`, `plan`, `fecha_fin_vigencia`, `limites`, `uso` y `funcionalidades`. Para una prueba histórica sin hora, los instantes son `null` y `acceso_operativo` es `false` mientras se revisa su vigencia.
 - `planes` solo si el rol tiene `cuenta:suscripcion`: planes activos compatibles con el tipo de cuenta, ordenados por precio; `es_actual` solo es `true` con la suscripción activa. Para los demás roles la clave no existe (la API lo recorta aunque la base la entregara).
 - No hay precios definitivos (D07): los de la propuesta SQL son referenciales en DOP.
 
 ### Vigencia (`cuidared_interno.actualizar_vencimientos()`)
 
-Pasa a `vencida` las pruebas con `fecha_fin_prueba < hoy()` y las suscripciones `activa` con `fecha_fin_vigencia < hoy()`; es idempotente, devuelve cuántas cuentas cambió, conserva `plan_id` y no se otorga a ningún rol de la API. **No es lo que bloquea el acceso:** `acceso_operativo()` compara las fechas con `hoy()` (hora de República Dominicana) en cada llamada, de modo que el bloqueo es exacto aunque el trabajo no haya corrido. El trabajo solo normaliza el estado visible. La programación con `pg_cron` (diaria, 04:05 UTC = 00:05 en RD) está en un bloque **comentado** al final de la propuesta SQL porque requiere habilitar la extensión y aprobación.
+Pasa a `vencida` las pruebas con `fecha_fin_prueba <= now()` y las suscripciones activas con `fecha_fin_vigencia < hoy()`. Es idempotente, devuelve cuántas cuentas cambió y conserva `plan_id`. `acceso_operativo()` calcula la vigencia en cada llamada. La función de actualización es interna. El bloque de programación con `pg_cron` queda como propuesta pendiente de aprobación.
 
 ## Catálogos con caché (CR-165)
 

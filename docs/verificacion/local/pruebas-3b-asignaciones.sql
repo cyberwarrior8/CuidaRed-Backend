@@ -52,7 +52,7 @@ select pruebas.afirmar(
   and (cuidared_api.api_asignar(:cta_fam, :'a_fam', 'cuidador_asignado', :'fam_cuid')->>'autorizado_por_usuario_id') = :'fam_coord',
   'asigna cuidadora y registra al autorizador');
 reset role;
-select pruebas.afirmar((select count(*) from cuidared.vinculo where envejeciente_id = :'a_fam' and usuario_id = :'fam_cuid') = 1, 'un solo vínculo por pareja (PK)');
+select pruebas.afirmar((select count(*) from cuidared.vinculo where envejeciente_id = :'a_fam' and usuario_id = :'fam_cuid') = 1, 'primer vínculo por pareja');
 select pruebas.afirmar(cuidared_interno.alcanza_envejeciente(:cta_fam, :'a_fam', :'fam_cuid'), 'la asignación concede alcance');
 select pruebas.afirmar(not cuidared_interno.alcanza_envejeciente(:cta_fam, :'a_fam', :'fam_cuid2'), 'la otra cuidadora sigue sin alcance');
 
@@ -147,14 +147,15 @@ set local role authenticated;
 select pruebas.error(format('select cuidared_api.api_asignaciones_listar(%s, %L)', :cta_fam, :'a_fam'), '42501');
 reset role;
 
--- Volver a autorizar actualiza la misma fila y limpia la revocación.
+-- Volver a autorizar registra otro periodo y conserva la revocación anterior.
 select pruebas.como(:'fam_coord');
 set local role authenticated;
 select cuidared_api.api_familiar_autorizar(:cta_fam, :'a_fam', :'fam_fami');
 reset role;
-select pruebas.afirmar((select count(*) from cuidared.vinculo where envejeciente_id = :'a_fam' and usuario_id = :'fam_fami') = 1, 'sigue habiendo un solo vínculo por pareja');
-select pruebas.afirmar((select fecha_revocacion is null and motivo_revocacion is null from cuidared.vinculo
-  where envejeciente_id = :'a_fam' and usuario_id = :'fam_fami'), 'reautorizar limpia la revocación');
+select pruebas.afirmar((select count(*) = 2 and count(*) filter (where fecha_revocacion is null) = 1
+  from cuidared.vinculo where envejeciente_id = :'a_fam' and usuario_id = :'fam_fami'), 'reautorizar conserva el periodo anterior');
+select pruebas.afirmar(exists (select 1 from cuidared.vinculo where envejeciente_id = :'a_fam' and usuario_id = :'fam_fami'
+  and fecha_revocacion is not null and motivo_revocacion = 'Ya no es responsable'), 'reautorizar conserva el motivo anterior');
 select pruebas.afirmar(cuidared_interno.alcanza_envejeciente(:cta_fam, :'a_fam', :'fam_fami'), 'el acceso familiar se restablece');
 
 /* ───────────── Revocar una asignación ───────────── */
@@ -174,7 +175,8 @@ set local role authenticated;
 select cuidared_api.api_asignar(:cta_fam, :'a_fam', 'cuidador_asignado', :'fam_cuid');
 reset role;
 select pruebas.afirmar(cuidared_interno.alcanza_envejeciente(:cta_fam, :'a_fam', :'fam_cuid'), 'reasignar restablece el alcance');
-select pruebas.afirmar((select count(*) from cuidared.vinculo where envejeciente_id = :'a_fam' and usuario_id = :'fam_cuid') = 1, 'reasignar actualiza la fila, no crea otra');
+select pruebas.afirmar((select count(*) = 2 and count(*) filter (where fecha_revocacion is null) = 1
+  from cuidared.vinculo where envejeciente_id = :'a_fam' and usuario_id = :'fam_cuid'), 'reasignar abre otro periodo');
 
 -- Dos cuidadoras asignadas están al mismo nivel (V2: no hay cuidador principal).
 select pruebas.como(:'fam_coord');

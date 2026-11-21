@@ -160,7 +160,7 @@ describe('RF-12/RF-13: asignaciones y permiso familiar explícito', () => {
     const res = await call('get', `${base}/asignaciones`).expect(200);
     expect(res.body).toEqual({ data: lista });
     expect(rpc).toHaveBeenCalledWith('api_asignaciones_listar', {
-      p_cuenta_id: 7,
+      p_cuenta_id: '7',
       p_envejeciente_id: ENV,
     });
     expect(res.headers['cache-control']).toBe('no-store');
@@ -186,7 +186,7 @@ describe('RF-12/RF-13: asignaciones y permiso familiar explícito', () => {
       .expect(201);
     expect(res.body).toEqual({ data: asignacion });
     expect(rpc).toHaveBeenCalledWith('api_asignar', {
-      p_cuenta_id: 7,
+      p_cuenta_id: '7',
       p_envejeciente_id: ENV,
       p_tipo: 'cuidador_asignado',
       p_usuario_id: USR,
@@ -232,7 +232,7 @@ describe('RF-12/RF-13: asignaciones y permiso familiar explícito', () => {
     const { call, rpc, audit } = setup({ handlers: { api_asignacion_revocar: null } });
     await call('post', `${base}/asignaciones/${USR}/revocar`).expect(204);
     expect(rpc).toHaveBeenLastCalledWith('api_asignacion_revocar', {
-      p_cuenta_id: 7,
+      p_cuenta_id: '7',
       p_envejeciente_id: ENV,
       p_usuario_id: USR,
       p_motivo: null,
@@ -265,7 +265,7 @@ describe('RF-12/RF-13: asignaciones y permiso familiar explícito', () => {
     const res = await call('post', `${base}/familiares`).send({ usuario_id: USR }).expect(201);
     expect(res.body.data).toEqual(autorizacion);
     expect(rpc).toHaveBeenCalledWith('api_familiar_autorizar', {
-      p_cuenta_id: 7,
+      p_cuenta_id: '7',
       p_envejeciente_id: ENV,
       p_usuario_id: USR,
     });
@@ -273,7 +273,7 @@ describe('RF-12/RF-13: asignaciones y permiso familiar explícito', () => {
       .send({ motivo: 'Ya no es responsable' })
       .expect(204);
     expect(rpc).toHaveBeenLastCalledWith('api_familiar_revocar', {
-      p_cuenta_id: 7,
+      p_cuenta_id: '7',
       p_envejeciente_id: ENV,
       p_usuario_id: USR,
       p_motivo: 'Ya no es responsable',
@@ -315,7 +315,7 @@ describe('RF-14 / D11: evaluación y factores de riesgo', () => {
       .expect(201);
     expect(res.body).toEqual({ data: evaluacion });
     expect(rpc).toHaveBeenCalledWith('api_riesgo_evaluar', {
-      p_cuenta_id: 7,
+      p_cuenta_id: '7',
       p_envejeciente_id: ENV,
       p_respuestas: completas,
     });
@@ -390,7 +390,7 @@ describe('RF-14 / D11: evaluación y factores de riesgo', () => {
       .expect(201);
     expect(res.body).toEqual({ data: resultado });
     expect(rpc).toHaveBeenCalledWith('api_riesgo_registrar', {
-      p_cuenta_id: 7,
+      p_cuenta_id: '7',
       p_envejeciente_id: ENV,
       p_riesgo_id: 4,
       p_nivel: 'alto',
@@ -430,8 +430,8 @@ describe('RF-14 / D11: evaluación y factores de riesgo', () => {
       .expect(200);
     expect(res.body).toEqual({ data: resultado });
     expect(rpc).toHaveBeenCalledWith('api_riesgo_resolver', {
-      p_cuenta_id: 7,
-      p_envejeciente_riesgo_id: 5,
+      p_cuenta_id: '7',
+      p_envejeciente_riesgo_id: '5',
       p_observacion: 'Se superó',
     });
     await call('post', '/api/v1/cuentas/7/riesgos/abc/resolver').expect(404);
@@ -466,7 +466,7 @@ describe('RF-14 / D11: evaluación y factores de riesgo', () => {
     const res = await call('get', `${base}/riesgo`).expect(200);
     expect(res.body).toEqual({ data: vacio });
     expect(rpc).toHaveBeenCalledWith('api_riesgo_consultar', {
-      p_cuenta_id: 7,
+      p_cuenta_id: '7',
       p_envejeciente_id: ENV,
     });
     expect(audit).toHaveBeenCalledWith(expect.objectContaining({ action: 'riesgo.consultado' }));
@@ -499,7 +499,7 @@ describe('RF-15: indicaciones médicas', () => {
       meta: { page: 1, limit: 20, total: 41, totalPages: 3 },
     });
     expect(handler).toHaveBeenCalledWith({
-      p_cuenta_id: 7,
+      p_cuenta_id: '7',
       p_envejeciente_id: ENV,
       p_estado: null,
       p_orden: 'fecha_inicio',
@@ -573,7 +573,7 @@ describe('RF-15: indicaciones médicas', () => {
       .expect(201);
     expect(res.body).toEqual({ data: indicacion });
     expect(rpc).toHaveBeenCalledWith('api_indicacion_crear', {
-      p_cuenta_id: 7,
+      p_cuenta_id: '7',
       p_envejeciente_id: ENV,
       p_datos: {
         tipo_indicacion_id: 2,
@@ -612,7 +612,7 @@ describe('RF-15: indicaciones médicas', () => {
       .expect(200);
     expect(res.body).toEqual({ data: indicacion });
     expect(rpc).toHaveBeenCalledWith('api_indicacion_editar', {
-      p_cuenta_id: 7,
+      p_cuenta_id: '7',
       p_indicacion_id: IND,
       p_datos: { titulo: 'Metformina 1000 mg', descripcion: null, fecha_fin: '2026-12-31' },
     });
@@ -660,7 +660,7 @@ describe('RF-15: indicaciones médicas', () => {
       .expect(200);
     expect(res.body.data.estado).toBe('suspendida');
     expect(rpc).toHaveBeenCalledWith('api_indicacion_estado', {
-      p_cuenta_id: 7,
+      p_cuenta_id: '7',
       p_indicacion_id: IND,
       p_estado: 'suspendida',
     });
@@ -696,7 +696,7 @@ describe('RF-3.4 / CU-06: historial consolidado', () => {
       meta: { page: 1, limit: 20, total: 1, totalPages: 1 },
     });
     expect(handler).toHaveBeenCalledWith({
-      p_cuenta_id: 7,
+      p_cuenta_id: '7',
       p_envejeciente_id: ENV,
       p_tipo: null,
       p_desc: true,
@@ -830,6 +830,10 @@ describe('Contrato entre la API y la propuesta SQL', () => {
   });
 
   it('los códigos CR_* que lanza el SQL están registrados o son transversales', () => {
+    const correcciones = readFileSync(
+      new URL('../docs/propuestas/cierre-2-4-correcciones.sql', import.meta.url),
+      'utf8',
+    );
     const usados = new Set(
       [...sql.matchAll(/raise exception '(CR_[A-Z0-9_]+)'/g)].map((m) => m[1]),
     );
@@ -838,7 +842,10 @@ describe('Contrato entre la API y la propuesta SQL', () => {
       expect(businessError(codigo), codigo).toBeDefined();
     }
     for (const codigo of Object.keys(ERRORES_SEGUIMIENTO))
-      expect(usados.has(codigo), codigo).toBe(true);
+      expect(
+        usados.has(codigo) || correcciones.includes(`raise exception '${codigo}'`),
+        codigo,
+      ).toBe(true);
   });
 
   it('el cuestionario del servidor y el de la API declaran las mismas preguntas', async () => {

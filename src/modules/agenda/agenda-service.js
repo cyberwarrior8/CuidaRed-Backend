@@ -58,7 +58,7 @@ export function createAgendaService(access, { now = () => new Date() } = {}) {
 
     /**
      * Evidencias de la tarea, cada una con una URL firmada de descarga de 5 minutos. La ruta interna del bucket no se
-     * devuelve. Si el objeto ya no está en el bucket, la URL es null y el resto de la evidencia se conserva.
+     * devuelve. Las evidencias históricas y los objetos faltantes se devuelven sin URL de descarga.
      */
     async listEvidences(cuentaId, tareaId) {
       const rows = await repo.listEvidences(cuentaId, tareaId);
@@ -67,6 +67,9 @@ export function createAgendaService(access, { now = () => new Date() } = {}) {
       const expira = new Date(now().getTime() + DESCARGA_SEGUNDOS * 1000).toISOString();
       return Promise.all(
         rows.map(async ({ ruta, ...evidencia }) => {
+          if (evidencia.es_historica === true) {
+            return { ...evidencia, url_descarga: null, url_expira_en: null };
+          }
           if (typeof ruta !== 'string') throw unavailable();
           try {
             const url = await storage.signedDownloadUrl(ruta, DESCARGA_SEGUNDOS);

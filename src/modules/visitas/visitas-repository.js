@@ -47,6 +47,14 @@ export function createVisitasRepository(rpc) {
         await rpc('api_programar_visita', { p_cuenta_id: cuentaId, p_datos: sinNulos(datos) }),
       );
     },
+    async programarRecurrentes(cuentaId, datos) {
+      return objeto(
+        await rpc('api_programar_visitas_recurrentes', {
+          p_cuenta_id: cuentaId,
+          p_datos: sinNulos(datos),
+        }),
+      );
+    },
     async iniciar(cuentaId, visitaId) {
       return objeto(
         await rpc('api_iniciar_visita', { p_cuenta_id: cuentaId, p_visita_id: visitaId }),
@@ -61,22 +69,21 @@ export function createVisitasRepository(rpc) {
         }),
       );
     },
-    async registrarRealizada(cuentaId, datos) {
-      const res = objeto(
-        await rpc('api_registrar_visita_realizada', {
-          p_cuenta_id: cuentaId,
-          p_datos: sinNulos(datos),
-        }),
-      );
-      if (typeof res.creada !== 'boolean') throw unavailable();
-      return { creada: res.creada, visita: objeto(res.visita) };
-    },
     async cancelar(cuentaId, visitaId, motivo) {
       return objeto(
         await rpc('api_cancelar_visita', {
           p_cuenta_id: cuentaId,
           p_visita_id: visitaId,
           p_motivo: motivo,
+        }),
+      );
+    },
+    async reprogramar(cuentaId, visitaId, datos) {
+      return objeto(
+        await rpc('api_reprogramar_visita', {
+          p_cuenta_id: cuentaId,
+          p_visita_id: visitaId,
+          p_datos: datos,
         }),
       );
     },

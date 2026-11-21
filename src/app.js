@@ -10,26 +10,46 @@ import cors from 'cors';
 import { rateLimit } from 'express-rate-limit';
 import { AppError } from './lib/errors.js';
 import { createAccessRouter } from './modules/access/access-routes.js';
+import {
+  browserSessionPath,
+  createBrowserSessionRouter,
+} from './modules/access/browser-session.js';
 import { requireSession } from './modules/access/require-session.js';
 import { createAgendaRouter } from './modules/agenda/agenda-routes.js';
+import { createAlertasRouter } from './modules/alertas/alertas-routes.js';
 import { createCatalogosRouter } from './modules/catalogos/catalogos-routes.js';
 import { createCuentaRouter } from './modules/cuentas/cuenta-routes.js';
 import { createCuentasRouter } from './modules/cuentas/cuentas-routes.js';
 import { requireCuenta } from './modules/cuentas/require-cuenta.js';
 import { createEnvejecientesRouter } from './modules/envejecientes/envejecientes-routes.js';
 import { createMiembrosRouter } from './modules/miembros/miembros-routes.js';
-import { createPublicoRouter } from './modules/publico/publico-routes.js';
 import { createMisMembresiasRouter } from './modules/miembros/mis-membresias-routes.js';
+import { createNecesidadesRouter } from './modules/necesidades/necesidades-routes.js';
 import { createSeguimientoRouter } from './modules/seguimiento/seguimiento-routes.js';
 import { createSyncRouter } from './modules/sync/sync-routes.js';
 import { createVisitasRouter } from './modules/visitas/visitas-routes.js';
+import { createWebPushRouter } from './modules/web-push/web-push-routes.js';
+import { createBackofficeRouter } from './modules/backoffice/backoffice-routes.js';
+import { createLoggingMiddleware, createSystemLogger } from './lib/system-logger.js';
+import { auditAccess } from './modules/backoffice/backoffice-audit.js';
+import { createPublicoRouter } from './modules/publico/publico-routes.js';
+import { createReportesRouter } from './modules/reportes/reportes-routes.js';
 
 export function createApp({ env, gateway, audit, adminGateway = null, now = () => new Date() }) {
-  const deps = { env, gateway, audit, adminGateway, now };
+  const recordLog = createSystemLogger(adminGateway, audit);
+  const deps = {
+    env,
+    gateway,
+    audit,
+    adminGateway,
+    now,
+    recordLog,
+    auditAccess: auditAccess(adminGateway, audit),
+  };
   const app = express();
   app.disable('x-powered-by');
   // No confiar en X-Forwarded-For sin conocer y configurar el proxy de despliegue.
-  app.set('trust proxy', false);
+  app.set('trust proxy', env.TRUST_PROXY_HOPS || false);
   // CR-162: conservar filter[campo] como clave literal y detectar valores repetidos.
   app.set('query parser', 'simple');
   app.use((req, res, next) => {
@@ -38,18 +58,22 @@ export function createApp({ env, gateway, audit, adminGateway = null, now = () =
     res.set('Cache-Control', 'no-store');
     next();
   });
+  app.use(createLoggingMiddleware(recordLog));
   app.use(helmet());
   app.use(
-    cors({
-      origin(origin, callback) {
-        if (!origin || env.origins.includes(origin)) return callback(null, true);
-        callback(new AppError(403, 'ORIGIN_DENIED', 'Origen no permitido.'));
-      },
-      methods: ['GET', 'POST', 'PATCH', 'OPTIONS'],
-      allowedHeaders: ['Authorization', 'Content-Type'],
-      exposedHeaders: ['X-Request-Id'],
-      credentials: false,
-    }),
+    cors((req, callback) =>
+      callback(null, {
+        origin(origin, callback) {
+          if (!origin || env.origins.includes(origin)) return callback(null, true);
+          callback(new AppError(403, 'ORIGIN_DENIED', 'Origen no permitido.'));
+        },
+        methods: ['GET', 'POST', 'PATCH', 'OPTIONS'],
+        allowedHeaders: ['Authorization', 'Content-Type', 'X-Change-Reason'],
+        // Content-Disposition: nombre del CSV de reportes (fase 7).
+        exposedHeaders: ['X-Request-Id', 'Content-Disposition'],
+        credentials: req.path.startsWith(`/api/v1${browserSessionPath}/`),
+      }),
+    ),
   );
   app.use(
     rateLimit({
@@ -61,19 +85,31 @@ export function createApp({ env, gateway, audit, adminGateway = null, now = () =
         next(new AppError(429, 'RATE_LIMITED', 'Espera un momento antes de intentar de nuevo.')),
     }),
   );
-  // Un lote de sync (hasta 25 visitas con observaciones) no cabe en 16 kB; solo esa ruta admite más. Si el analizador
+  // Un lote de sync con observaciones y necesidades puede superar 16 kB; solo esa ruta admite más. Si el analizador
   // de la ruta ya leyó el cuerpo, el global no vuelve a leerlo.
   app.use('/api/v1/cuentas/:cuentaId/sync', express.json({ limit: '256kb', strict: true }));
   app.use(express.json({ limit: '16kb', strict: true }));
   app.get('/health/live', (_req, res) => res.json({ status: 'ok' }));
+  // Módulo Backoffice exclusivo para administración interna de plataforma (BO-01, BO-02)
+  app.use(['/api/admin', '/api/v1/backoffice'], createBackofficeRouter(deps));
   const api = express.Router();
-  // Únicas rutas sin sesión: /publico/* (cada ruta aplica su propio límite y validación).
-  api.use('/publico', createPublicoRouter(deps));
+  if (env.VISITAS_PUBLICAS_HABILITADAS && adminGateway && env.CODIGO_SEGUIMIENTO_SECRETO) {
+    api.use(
+      '/publico',
+      createPublicoRouter(deps, (name, args) => adminGateway.visitaPublicaRpc(name, args)),
+    );
+  } else {
+    api.use('/publico', (_req, _res, next) =>
+      next(new AppError(404, 'NOT_FOUND', 'Recurso no encontrado.')),
+    );
+  }
+  api.use(browserSessionPath, createBrowserSessionRouter(deps));
   api.use(requireSession(gateway));
   api.use(createAccessRouter(deps));
   api.use(createCatalogosRouter(deps));
   api.use(createCuentasRouter(deps));
   api.use(createMisMembresiasRouter(deps));
+  api.use('/notificaciones-push', createWebPushRouter(deps));
   // Rutas de una cuenta: el contexto (rol, permisos, vigencia) se resuelve una vez y lo usan todos los módulos.
   const enCuenta = express.Router({ mergeParams: true });
   enCuenta.use(requireCuenta());
@@ -83,6 +119,9 @@ export function createApp({ env, gateway, audit, adminGateway = null, now = () =
   enCuenta.use(createSeguimientoRouter(deps));
   enCuenta.use(createVisitasRouter(deps));
   enCuenta.use(createAgendaRouter(deps));
+  enCuenta.use(createNecesidadesRouter(deps));
+  enCuenta.use(createAlertasRouter(deps));
+  enCuenta.use(createReportesRouter(deps));
   enCuenta.use(createSyncRouter(deps));
   api.use('/cuentas/:cuentaId', enCuenta);
   app.use('/api/v1', api);
@@ -96,12 +135,17 @@ export function createApp({ env, gateway, audit, adminGateway = null, now = () =
     const known = error instanceof AppError;
     const status = known ? error.status : 500;
     const code = known ? error.code : 'INTERNAL_ERROR';
+    res.locals.errorCode = code;
+    if (!known) res.locals.unexpectedError = error;
     audit({
       requestId: res.locals.requestId,
       actorId: res.locals.actorId,
       action: 'api.request',
       result: status < 500 ? 'denied' : 'error',
       code,
+      dependency: error.dependency,
+      upstreamStatus: error.upstreamStatus,
+      upstreamCode: error.upstreamCode,
     });
     res.status(status).json({
       error: { code, message: known ? error.message : 'No se pudo completar la operación.' },

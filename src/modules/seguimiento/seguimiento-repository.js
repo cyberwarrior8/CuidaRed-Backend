@@ -32,7 +32,7 @@ function pagina(resultado, query) {
 }
 
 export function createSeguimientoRepository(rpc) {
-  const cuenta = (cuentaId) => Number(cuentaId);
+  const cuenta = (cuentaId) => cuentaId;
 
   return {
     /* Asignaciones y permiso familiar */

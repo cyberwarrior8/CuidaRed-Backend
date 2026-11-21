@@ -33,7 +33,19 @@ Content-Type: application/json
 {"nombres":"Ana María","telefono":null}
 ```
 
-El SDK realiza `signInWithPassword`, `verifyOtp`, `resetPasswordForEmail`, `updateUser` y `signOut`; Express no recibe contraseñas ni refresh tokens. Una sesión obtenida tras OTP no concede rol ni membresía.
+El SDK realiza `signInWithPassword`, `verifyOtp`, `resetPasswordForEmail`, `updateUser` y `signOut`. El navegador envía el token de renovación a Express solo al establecer la sesión, por el canal autenticado. Express cifra ese token en la cookie y se encarga de su renovación. Las contraseñas y los códigos se envían directamente a Supabase Auth. Una sesión obtenida tras OTP no concede rol ni membresía.
+
+### Recuperación en el mismo navegador
+
+Las tres rutas siguientes requieren un origen presente en `FRONTEND_ORIGINS` y peticiones con credenciales. La cookie tiene atributos `HttpOnly`, `Secure` y `SameSite=Strict` y se limita a `/api/v1/session/browser`.
+
+| Método y ruta | Entrada | Respuesta |
+| --- | --- | --- |
+| POST `/session/browser/start` | Bearer vigente y `{ refresh_token }`. | 200 con `access_token`, `expires_at` y `user.id`, más el establecimiento de la cookie. |
+| POST `/session/browser/restore` | Cookie. | 200 con la sesión revalidada y la cookie actualizada. 204 si el navegador carece de sesión. 401 si venció o fue revocada. |
+| POST `/session/browser/clear` | Cookie si existe. | 204 y eliminación de la cookie. El cierre manual también revoca la sesión mediante `/session/logout`. |
+
+`BROWSER_SESSION_KEY` es una clave privada de 32 bytes en base64url. Genera una por entorno y usa la misma en todas las instancias de la API. La rotación de esta clave requiere volver a iniciar sesión. Para el despliegue, sirve el frontend y la API por HTTPS en el mismo sitio web. El desarrollo usa `http://localhost` en ambos.
 
 ## Persistencia aprobada y aplicada
 
@@ -61,7 +73,7 @@ La ejecución y las pruebas negativas de permisos/sesiones en PostgreSQL ya se c
 
 Acceso real por defecto; solo durante desarrollo se puede activar el prototipo con `VITE_AUTH_MODE=demo`. La compilación de producción excluye el prototipo. La identidad real no se transforma en usuario local ni se enlaza con cuentas demo. Las rutas operativas quedan fuera del modo conectado hasta incorporar autorización y persistencia en las fases correspondientes.
 
-Se reutilizan el contenedor visual y componentes de formularios existentes. Activación conserva tres pasos. La sesión del SDK se guarda en `sessionStorage`, sin contraseñas ni códigos; activación/recuperación usan clientes efímeros. La recuperación cambia la contraseña y solicita cierre global antes de volver al login. El heartbeat responde a interacción visible, no a consultas periódicas. Si falla la revocación durante logout, se borra la sesión local y se informa que el cierre de servidor no pudo confirmarse.
+Se reutilizan el contenedor visual y los formularios. Activación conserva tres pasos y tanto la activación como la recuperación usan clientes efímeros. La recuperación cambia la contraseña y solicita el cierre global antes de volver a iniciar sesión. La aplicación conserva el JWT de acceso en memoria y puede recuperar una sesión vigente desde la cookie al abrir otra pestaña. El servidor sigue verificando 30 minutos de inactividad y 12 horas máximas. Recuperar una sesión o renovar su token no registra actividad. Si falla la limpieza de la cookie al salir, el navegador registra un indicador sin credenciales e impide la recuperación hasta volver a solicitar su eliminación.
 
 ## Validación y cierre pendiente
 

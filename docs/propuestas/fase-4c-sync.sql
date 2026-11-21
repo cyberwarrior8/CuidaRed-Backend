@@ -170,13 +170,9 @@ begin
   perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(p_visita_id::text, 0));
   v_v := cuidared_interno.bloquear_visita(p_visita_id);
 
-  -- Visita inexistente: registrar la crea ya realizada y sin programar con el id del cliente (4a, idempotente por visita_id).
+  -- La cola solo puede operar sobre visitas que el servidor ya programó.
   if v_v.visita_id is null then
-    if p_tipo = 'iniciar' then raise no_data_found; end if;
-    perform cuidared_interno.registrar_visita_realizada(p_cuenta_id, p_usuario_id, p_visita_id, p_datos);
-    o_resultado := 'aplicada';
-    select v.fecha_actualizacion into o_servidor from cuidared.visita v where v.visita_id = p_visita_id;
-    return;
+    raise no_data_found;
   end if;
 
   if v_v.cuenta_id is distinct from p_cuenta_id then
@@ -338,6 +334,7 @@ begin
       v_resultado := 'rechazada'; v_motivo := 'SUBSCRIPTION_INACTIVE';
     elsif v_hay_previa and v_previa.resultado::text <> 'rechazada' then
       -- Reintento de una operación ya resuelta: se devuelve lo resuelto, sin aplicar nada.
+      perform cuidared_interno.exigir_operar_visita(p_cuenta_id, v_registro, v_uid);
       v_resultado := 'duplicada'; v_original := v_previa.resultado::text; v_motivo := v_previa.motivo::text;
       v_gana := v_previa.gana::text; v_servidor := v_previa.actualizado_en_servidor;
     elsif v_entidad <> 'visita' then

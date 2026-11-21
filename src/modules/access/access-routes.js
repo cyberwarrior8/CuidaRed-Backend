@@ -1,8 +1,6 @@
 /* API de sesión y perfil propio · ID01, RF-09/RF-21. © 2026 Equipo CuidaRed – INTEC. */
 import { Router } from 'express';
 import { AppError } from '../../lib/errors.js';
-import { cuentasMeDto } from '../cuentas/cuentas-dto.js';
-import { createCuentasRepository } from '../cuentas/cuentas-repository.js';
 import { updateProfileSchema, publicProfile } from './profile-schema.js';
 
 function parse(schema, body) {
@@ -11,7 +9,7 @@ function parse(schema, body) {
   return result.data;
 }
 
-export function createAccessRouter({ audit }) {
+export function createAccessRouter({ audit, auditAccess }) {
   const router = Router();
   // requireSession se aplica en app.js para todo /api/v1 (una sola validación por petición).
   const log = (res, action) =>
@@ -22,14 +20,9 @@ export function createAccessRouter({ audit }) {
       result: 'success',
     });
 
-  // CR-164: además de identidad y perfil, las cuentas del usuario (activas con su rol, permisos y vigencia, y las
-  // membresías pendientes de aceptar). El servidor no recuerda una cuenta activa: el cliente elige una de `cuentas`.
   router.get('/me', async (_req, res) => {
-    const { identity, profile, repository } = res.locals.access;
-    const cuentas = cuentasMeDto(await createCuentasRepository(repository.rpc).misCuentas());
-    res.json({
-      data: { identity, profile: publicProfile(profile), cuenta_activa_id: null, cuentas },
-    });
+    const { identity, profile } = res.locals.access;
+    res.json({ data: { identity, profile: publicProfile(profile) } });
   });
   router.patch('/me', async (req, res) => {
     const input = parse(updateProfileSchema, req.body);
@@ -46,6 +39,7 @@ export function createAccessRouter({ audit }) {
   router.post('/session/logout', async (_req, res) => {
     await res.locals.access.repository.session('cerrar');
     log(res, 'session.closed');
+    await auditAccess({ actorId: res.locals.actorId, action: 'session.closed', req: _req });
     res.status(204).end();
   });
   return router;

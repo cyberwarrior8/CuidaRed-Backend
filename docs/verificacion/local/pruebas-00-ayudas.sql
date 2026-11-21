@@ -9,6 +9,44 @@
 --   reset role;
 --   rollback;
 -- © 2026 Equipo CuidaRed – INTEC.
+-- Catálogo comercial de ejemplo solo para pruebas, después de cargar fase 2a.
+insert into cuidared.plan_categoria (nombre) values ('Básico'), ('Premium') on conflict (nombre) do nothing;
+
+-- Precios referenciales en DOP (D07: precios, moneda y vigencias siguen pendientes). Límite null = ilimitado.
+insert into cuidared.plan (nombre, plan_categoria_id, tipo_cuenta_id, precio, periodicidad, duracion_dias,
+                           limite_envejecientes, limite_usuarios, limite_familiares, resumen)
+select v.nombre, pc.plan_categoria_id, t.tipo_cuenta_id, v.precio, 'mensual', 30, v.env, v.usu, v.fam, v.resumen
+from (values
+  ('Básico Familiar', 'Básico', 'familia', 650, 2, null, 3,
+   'Hasta 2 adultos mayores y 3 familiares, cuidadores sin límite, alertas estándar y visitas recurrentes.'),
+  ('Cuidado Integral', 'Premium', 'familia', 1450, 6, null, null,
+   'Hasta 6 adultos mayores, familiares y cuidadores sin límite, alertas críticas, historial inmutable y métricas.'),
+  ('Operación Base', 'Básico', 'organizacion', 3500, 15, 20, null,
+   'Hasta 15 adultos mayores y 20 miembros, visitas, necesidades diarias y tablón de notificaciones.'),
+  ('Gestión Comunitaria Avanzada', 'Premium', 'organizacion', 8500, null, null, null,
+   'Adultos mayores y equipo sin límite, clasificación de riesgo completa, necesidades institucionales y reportes avanzados.')
+) as v(nombre, categoria, tipo, precio, env, usu, fam, resumen)
+join cuidared.plan_categoria pc on pc.nombre = v.categoria
+join cuidared.tipo_cuenta t on t.codigo = v.tipo
+on conflict (nombre) do nothing;
+
+insert into cuidared.plan_funcionalidad (plan_id, funcionalidad)
+select p.plan_id, f.funcionalidad
+from (values
+  ('Básico Familiar', 'registro_visitas'), ('Básico Familiar', 'necesidades_diarias'), ('Básico Familiar', 'visitas_recurrentes'),
+  ('Cuidado Integral', 'registro_visitas'), ('Cuidado Integral', 'necesidades_diarias'), ('Cuidado Integral', 'visitas_recurrentes'),
+  ('Cuidado Integral', 'alertas_tiempo_real'), ('Cuidado Integral', 'historial_inmutable'), ('Cuidado Integral', 'dashboard_metricas'),
+  ('Operación Base', 'registro_visitas'), ('Operación Base', 'necesidades_diarias'), ('Operación Base', 'tablon_notificaciones'),
+  ('Operación Base', 'dashboard_metricas'),
+  ('Gestión Comunitaria Avanzada', 'registro_visitas'), ('Gestión Comunitaria Avanzada', 'necesidades_diarias'),
+  ('Gestión Comunitaria Avanzada', 'tablon_notificaciones'), ('Gestión Comunitaria Avanzada', 'dashboard_metricas'),
+  ('Gestión Comunitaria Avanzada', 'visitas_recurrentes'), ('Gestión Comunitaria Avanzada', 'alertas_tiempo_real'),
+  ('Gestión Comunitaria Avanzada', 'riesgo_completo'), ('Gestión Comunitaria Avanzada', 'org_necesidad'),
+  ('Gestión Comunitaria Avanzada', 'reportes_avanzados')
+) as f(plan, funcionalidad)
+join cuidared.plan p on p.nombre = f.plan
+on conflict do nothing;
+
 create schema pruebas;
 grant usage on schema pruebas to authenticated, anon;
 
@@ -27,7 +65,8 @@ end $$;
 create function pruebas.cuenta(p_tipo text, p_titular uuid, p_estado text default 'prueba', p_plan text default null,
                                p_fin_prueba date default null)
 returns bigint language plpgsql security definer set search_path = '' as $$
-declare v_id bigint; v_tipo smallint; v_cat smallint; v_hoy date := cuidared_interno.hoy();
+declare v_id bigint; v_tipo smallint; v_cat smallint;
+  v_fin timestamptz := coalesce(p_fin_prueba::timestamp at time zone 'America/Santo_Domingo', now() + interval '168 hours');
 begin
   select tipo_cuenta_id into v_tipo from cuidared.tipo_cuenta where codigo = p_tipo;
   select categoria_cuenta_id into v_cat from cuidared.categoria_cuenta where tipo_cuenta_id = v_tipo order by 1 limit 1;
@@ -36,8 +75,8 @@ begin
   insert into cuidared.cuenta(nombre, tipo_cuenta_id, categoria_cuenta_id, municipio_cod, suscripcion_estado, prueba_gratuita,
                               fecha_inicio_prueba, fecha_fin_prueba, plan_id, usuario_titular_id)
   values ('Cuenta ' || p_tipo, v_tipo, v_cat, '0101', p_estado, p_estado = 'prueba',
-          case when p_estado = 'prueba' then coalesce(p_fin_prueba, v_hoy + 7) - 7 end,
-          case when p_estado = 'prueba' then coalesce(p_fin_prueba, v_hoy + 7) end,
+          case when p_estado = 'prueba' then v_fin - interval '168 hours' end,
+          case when p_estado = 'prueba' then v_fin end,
           (select plan_id from cuidared.plan where nombre = p_plan), p_titular)
   returning cuenta_id into v_id;
   perform pruebas.miembro(v_id, p_titular, case p_tipo when 'familia' then 'coordinador' else 'administrador' end);
@@ -46,8 +85,8 @@ end $$;
 
 create function pruebas.miembro(p_cuenta bigint, p_usuario uuid, p_rol text, p_estado text default 'activa')
 returns bigint language sql security definer set search_path = '' as $$
-  insert into cuidared.membresia(usuario_id, cuenta_id, rol_id, estado)
-  select p_usuario, p_cuenta, r.rol_id, p_estado from cuidared.rol r where r.codigo = p_rol
+  insert into cuidared.membresia(usuario_id, cuenta_id, rol_id, estado, fecha_inicio)
+  select p_usuario, p_cuenta, r.rol_id, p_estado, cuidared_interno.hoy() from cuidared.rol r where r.codigo = p_rol
   returning membresia_id
 $$;
 

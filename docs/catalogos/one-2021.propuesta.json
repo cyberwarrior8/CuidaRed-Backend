@@ -1,0 +1,1530 @@
+{
+  "estado": "aplicado_y_verificado_2026-11-01",
+  "fuente": {
+    "autor": "Oficina Nacional de Estadística (ONE), República Dominicana",
+    "titulo": "División Territorial 2021",
+    "edicion": 2021,
+    "fecha_corte_declarada": "2021-06-30",
+    "publicacion": "https://www.one.gob.do/publicaciones/2021/division-territorial-2021/",
+    "copia_oficial_consultada": "https://indotel.gob.do/wp-content/uploads/2022/09/division-territorial-2021.pdf",
+    "sha256_pdf": "98fae470271cec43297df31f0df118a35b8188baa486f66062ed7b00b96d2b40",
+    "paginas_pdf": 519,
+    "extraccion": "Tablas territoriales por provincia; filas con DM, sección, barrio y sub-barrio cero. No se usa el apéndice que declara actualización de julio de 2019."
+  },
+  "advertencias": [
+    "Edición y carga aprobadas expresamente el 01/11/2026; no se certifica vigencia territorial a 2026.",
+    "municipio_cod_propuesto concatena los pares provincia y municipio conservando ceros iniciales. No es un código de seis dígitos de distrito municipal.",
+    "Distrito Nacional se conserva en el nivel provincia_cod conforme a la codificación de la ONE, sin cambiar su naturaleza administrativa.",
+    "Se aplican las 37 correcciones de extracción verificadas visualmente y Sánchez Ramírez con tilde, aprobadas expresamente el 01/11/2026; nombre_extraido conserva el texto previo en las filas corregidas."
+  ],
+  "conteos": {
+    "nivel_provincia": 32,
+    "municipios": 158
+  },
+  "provincias": [
+    {
+      "region_cod": "10",
+      "provincia_cod": "01",
+      "nombre": "Distrito Nacional",
+      "pagina_fuente": 27
+    },
+    {
+      "region_cod": "05",
+      "provincia_cod": "02",
+      "nombre": "Azua",
+      "pagina_fuente": 38,
+      "nombre_extraido": "a zua"
+    },
+    {
+      "region_cod": "06",
+      "provincia_cod": "03",
+      "nombre": "Baoruco",
+      "pagina_fuente": 55
+    },
+    {
+      "region_cod": "06",
+      "provincia_cod": "04",
+      "nombre": "Barahona",
+      "pagina_fuente": 67
+    },
+    {
+      "region_cod": "04",
+      "provincia_cod": "05",
+      "nombre": "Dajabón",
+      "pagina_fuente": 83
+    },
+    {
+      "region_cod": "03",
+      "provincia_cod": "06",
+      "nombre": "Duarte",
+      "pagina_fuente": 93
+    },
+    {
+      "region_cod": "07",
+      "provincia_cod": "07",
+      "nombre": "Elías Piña",
+      "pagina_fuente": 115
+    },
+    {
+      "region_cod": "08",
+      "provincia_cod": "08",
+      "nombre": "El Seibo",
+      "pagina_fuente": 127
+    },
+    {
+      "region_cod": "01",
+      "provincia_cod": "09",
+      "nombre": "Espaillat",
+      "pagina_fuente": 139
+    },
+    {
+      "region_cod": "06",
+      "provincia_cod": "10",
+      "nombre": "Independencia",
+      "pagina_fuente": 155
+    },
+    {
+      "region_cod": "08",
+      "provincia_cod": "11",
+      "nombre": "La Altagracia",
+      "pagina_fuente": 163
+    },
+    {
+      "region_cod": "08",
+      "provincia_cod": "12",
+      "nombre": "La Romana",
+      "pagina_fuente": 179
+    },
+    {
+      "region_cod": "02",
+      "provincia_cod": "13",
+      "nombre": "La Vega",
+      "pagina_fuente": 189
+    },
+    {
+      "region_cod": "03",
+      "provincia_cod": "14",
+      "nombre": "María Trinidad Sánchez",
+      "pagina_fuente": 211
+    },
+    {
+      "region_cod": "04",
+      "provincia_cod": "15",
+      "nombre": "Monte Cristi",
+      "pagina_fuente": 225
+    },
+    {
+      "region_cod": "06",
+      "provincia_cod": "16",
+      "nombre": "Pedernales",
+      "pagina_fuente": 235
+    },
+    {
+      "region_cod": "05",
+      "provincia_cod": "17",
+      "nombre": "Peravia",
+      "pagina_fuente": 242
+    },
+    {
+      "region_cod": "01",
+      "provincia_cod": "18",
+      "nombre": "Puerto Plata",
+      "pagina_fuente": 256
+    },
+    {
+      "region_cod": "03",
+      "provincia_cod": "19",
+      "nombre": "Hermanas Mirabal",
+      "pagina_fuente": 277
+    },
+    {
+      "region_cod": "03",
+      "provincia_cod": "20",
+      "nombre": "Samaná",
+      "pagina_fuente": 288
+    },
+    {
+      "region_cod": "05",
+      "provincia_cod": "21",
+      "nombre": "San Cristóbal",
+      "pagina_fuente": 299
+    },
+    {
+      "region_cod": "07",
+      "provincia_cod": "22",
+      "nombre": "San Juan",
+      "pagina_fuente": 321
+    },
+    {
+      "region_cod": "09",
+      "provincia_cod": "23",
+      "nombre": "San Pedro de Macorís",
+      "pagina_fuente": 343
+    },
+    {
+      "region_cod": "02",
+      "provincia_cod": "24",
+      "nombre": "Sánchez Ramírez",
+      "pagina_fuente": 358,
+      "nombre_extraido": "Sanchez Ramírez"
+    },
+    {
+      "region_cod": "01",
+      "provincia_cod": "25",
+      "nombre": "Santiago",
+      "pagina_fuente": 373
+    },
+    {
+      "region_cod": "04",
+      "provincia_cod": "26",
+      "nombre": "Santiago Rodríguez",
+      "pagina_fuente": 410
+    },
+    {
+      "region_cod": "04",
+      "provincia_cod": "27",
+      "nombre": "Valverde",
+      "pagina_fuente": 421
+    },
+    {
+      "region_cod": "02",
+      "provincia_cod": "28",
+      "nombre": "Monseñor Nouel",
+      "pagina_fuente": 433
+    },
+    {
+      "region_cod": "09",
+      "provincia_cod": "29",
+      "nombre": "Monte Plata",
+      "pagina_fuente": 446
+    },
+    {
+      "region_cod": "09",
+      "provincia_cod": "30",
+      "nombre": "Hato Mayor",
+      "pagina_fuente": 465
+    },
+    {
+      "region_cod": "05",
+      "provincia_cod": "31",
+      "nombre": "San José de Ocoa",
+      "pagina_fuente": 475
+    },
+    {
+      "region_cod": "10",
+      "provincia_cod": "32",
+      "nombre": "Santo Domingo",
+      "pagina_fuente": 486
+    }
+  ],
+  "municipios": [
+    {
+      "region_cod": "10",
+      "provincia_cod": "01",
+      "nombre": "Santo Domingo de Guzmán",
+      "pagina_fuente": 27,
+      "municipio_cod_propuesto": "0101",
+      "municipio_par_one": "01"
+    },
+    {
+      "region_cod": "05",
+      "provincia_cod": "02",
+      "nombre": "Azua",
+      "pagina_fuente": 38,
+      "municipio_cod_propuesto": "0201",
+      "municipio_par_one": "01",
+      "nombre_extraido": "a zua"
+    },
+    {
+      "region_cod": "05",
+      "provincia_cod": "02",
+      "nombre": "Las Charcas",
+      "pagina_fuente": 41,
+      "municipio_cod_propuesto": "0202",
+      "municipio_par_one": "02"
+    },
+    {
+      "region_cod": "05",
+      "provincia_cod": "02",
+      "nombre": "Las Yayas de Viajama",
+      "pagina_fuente": 42,
+      "municipio_cod_propuesto": "0203",
+      "municipio_par_one": "03"
+    },
+    {
+      "region_cod": "05",
+      "provincia_cod": "02",
+      "nombre": "Padre Las Casas",
+      "pagina_fuente": 43,
+      "municipio_cod_propuesto": "0204",
+      "municipio_par_one": "04"
+    },
+    {
+      "region_cod": "05",
+      "provincia_cod": "02",
+      "nombre": "Peralta",
+      "pagina_fuente": 45,
+      "municipio_cod_propuesto": "0205",
+      "municipio_par_one": "05"
+    },
+    {
+      "region_cod": "05",
+      "provincia_cod": "02",
+      "nombre": "Sabana Yegua",
+      "pagina_fuente": 46,
+      "municipio_cod_propuesto": "0206",
+      "municipio_par_one": "06"
+    },
+    {
+      "region_cod": "05",
+      "provincia_cod": "02",
+      "nombre": "Pueblo Viejo",
+      "pagina_fuente": 47,
+      "municipio_cod_propuesto": "0207",
+      "municipio_par_one": "07"
+    },
+    {
+      "region_cod": "05",
+      "provincia_cod": "02",
+      "nombre": "Tábara Arriba",
+      "pagina_fuente": 47,
+      "municipio_cod_propuesto": "0208",
+      "municipio_par_one": "08",
+      "nombre_extraido": "t ábara a rriba"
+    },
+    {
+      "region_cod": "05",
+      "provincia_cod": "02",
+      "nombre": "Guayabal",
+      "pagina_fuente": 48,
+      "municipio_cod_propuesto": "0209",
+      "municipio_par_one": "09"
+    },
+    {
+      "region_cod": "05",
+      "provincia_cod": "02",
+      "nombre": "Estebanía",
+      "pagina_fuente": 49,
+      "municipio_cod_propuesto": "0210",
+      "municipio_par_one": "10"
+    },
+    {
+      "region_cod": "06",
+      "provincia_cod": "03",
+      "nombre": "Neiba",
+      "pagina_fuente": 55,
+      "municipio_cod_propuesto": "0301",
+      "municipio_par_one": "01"
+    },
+    {
+      "region_cod": "06",
+      "provincia_cod": "03",
+      "nombre": "Galván",
+      "pagina_fuente": 57,
+      "municipio_cod_propuesto": "0302",
+      "municipio_par_one": "02"
+    },
+    {
+      "region_cod": "06",
+      "provincia_cod": "03",
+      "nombre": "Tamayo",
+      "pagina_fuente": 58,
+      "municipio_cod_propuesto": "0303",
+      "municipio_par_one": "03",
+      "nombre_extraido": "t amayo"
+    },
+    {
+      "region_cod": "06",
+      "provincia_cod": "03",
+      "nombre": "Villa Jaragua",
+      "pagina_fuente": 59,
+      "municipio_cod_propuesto": "0304",
+      "municipio_par_one": "04"
+    },
+    {
+      "region_cod": "06",
+      "provincia_cod": "03",
+      "nombre": "Los Ríos",
+      "pagina_fuente": 61,
+      "municipio_cod_propuesto": "0305",
+      "municipio_par_one": "05"
+    },
+    {
+      "region_cod": "06",
+      "provincia_cod": "04",
+      "nombre": "Barahona",
+      "pagina_fuente": 67,
+      "municipio_cod_propuesto": "0401",
+      "municipio_par_one": "01"
+    },
+    {
+      "region_cod": "06",
+      "provincia_cod": "04",
+      "nombre": "Cabral",
+      "pagina_fuente": 70,
+      "municipio_cod_propuesto": "0402",
+      "municipio_par_one": "02",
+      "nombre_extraido": "cabral"
+    },
+    {
+      "region_cod": "06",
+      "provincia_cod": "04",
+      "nombre": "Enriquillo",
+      "pagina_fuente": 70,
+      "municipio_cod_propuesto": "0403",
+      "municipio_par_one": "03"
+    },
+    {
+      "region_cod": "06",
+      "provincia_cod": "04",
+      "nombre": "Paraíso",
+      "pagina_fuente": 71,
+      "municipio_cod_propuesto": "0404",
+      "municipio_par_one": "04"
+    },
+    {
+      "region_cod": "06",
+      "provincia_cod": "04",
+      "nombre": "Vicente Noble",
+      "pagina_fuente": 72,
+      "municipio_cod_propuesto": "0405",
+      "municipio_par_one": "05"
+    },
+    {
+      "region_cod": "06",
+      "provincia_cod": "04",
+      "nombre": "El Peñón",
+      "pagina_fuente": 74,
+      "municipio_cod_propuesto": "0406",
+      "municipio_par_one": "06"
+    },
+    {
+      "region_cod": "06",
+      "provincia_cod": "04",
+      "nombre": "La Ciénaga",
+      "pagina_fuente": 75,
+      "municipio_cod_propuesto": "0407",
+      "municipio_par_one": "07",
+      "nombre_extraido": "la ciénaga"
+    },
+    {
+      "region_cod": "06",
+      "provincia_cod": "04",
+      "nombre": "Fundación",
+      "pagina_fuente": 76,
+      "municipio_cod_propuesto": "0408",
+      "municipio_par_one": "08"
+    },
+    {
+      "region_cod": "06",
+      "provincia_cod": "04",
+      "nombre": "Las Salinas",
+      "pagina_fuente": 77,
+      "municipio_cod_propuesto": "0409",
+      "municipio_par_one": "09",
+      "nombre_extraido": "las Salinas"
+    },
+    {
+      "region_cod": "06",
+      "provincia_cod": "04",
+      "nombre": "Polo",
+      "pagina_fuente": 78,
+      "municipio_cod_propuesto": "0410",
+      "municipio_par_one": "10"
+    },
+    {
+      "region_cod": "06",
+      "provincia_cod": "04",
+      "nombre": "Jaquimeyes",
+      "pagina_fuente": 79,
+      "municipio_cod_propuesto": "0411",
+      "municipio_par_one": "11"
+    },
+    {
+      "region_cod": "04",
+      "provincia_cod": "05",
+      "nombre": "Dajabón",
+      "pagina_fuente": 83,
+      "municipio_cod_propuesto": "0501",
+      "municipio_par_one": "01"
+    },
+    {
+      "region_cod": "04",
+      "provincia_cod": "05",
+      "nombre": "Loma de Cabrera",
+      "pagina_fuente": 84,
+      "municipio_cod_propuesto": "0502",
+      "municipio_par_one": "02",
+      "nombre_extraido": "loma de cabrera"
+    },
+    {
+      "region_cod": "04",
+      "provincia_cod": "05",
+      "nombre": "Partido",
+      "pagina_fuente": 86,
+      "municipio_cod_propuesto": "0503",
+      "municipio_par_one": "03"
+    },
+    {
+      "region_cod": "04",
+      "provincia_cod": "05",
+      "nombre": "Restauración",
+      "pagina_fuente": 86,
+      "municipio_cod_propuesto": "0504",
+      "municipio_par_one": "04"
+    },
+    {
+      "region_cod": "04",
+      "provincia_cod": "05",
+      "nombre": "El Pino",
+      "pagina_fuente": 87,
+      "municipio_cod_propuesto": "0505",
+      "municipio_par_one": "05"
+    },
+    {
+      "region_cod": "03",
+      "provincia_cod": "06",
+      "nombre": "San Francisco de Macorís",
+      "pagina_fuente": 93,
+      "municipio_cod_propuesto": "0601",
+      "municipio_par_one": "01"
+    },
+    {
+      "region_cod": "03",
+      "provincia_cod": "06",
+      "nombre": "Arenoso",
+      "pagina_fuente": 103,
+      "municipio_cod_propuesto": "0602",
+      "municipio_par_one": "02",
+      "nombre_extraido": "arenoso"
+    },
+    {
+      "region_cod": "03",
+      "provincia_cod": "06",
+      "nombre": "Castillo",
+      "pagina_fuente": 104,
+      "municipio_cod_propuesto": "0603",
+      "municipio_par_one": "03",
+      "nombre_extraido": "castillo"
+    },
+    {
+      "region_cod": "03",
+      "provincia_cod": "06",
+      "nombre": "Pimentel",
+      "pagina_fuente": 105,
+      "municipio_cod_propuesto": "0604",
+      "municipio_par_one": "04"
+    },
+    {
+      "region_cod": "03",
+      "provincia_cod": "06",
+      "nombre": "Villa Riva",
+      "pagina_fuente": 106,
+      "municipio_cod_propuesto": "0605",
+      "municipio_par_one": "05",
+      "nombre_extraido": "Villa riva"
+    },
+    {
+      "region_cod": "03",
+      "provincia_cod": "06",
+      "nombre": "Las Guáranas",
+      "pagina_fuente": 109,
+      "municipio_cod_propuesto": "0606",
+      "municipio_par_one": "06",
+      "nombre_extraido": "las Guáranas"
+    },
+    {
+      "region_cod": "03",
+      "provincia_cod": "06",
+      "nombre": "Eugenio María de Hostos",
+      "pagina_fuente": 109,
+      "municipio_cod_propuesto": "0607",
+      "municipio_par_one": "07"
+    },
+    {
+      "region_cod": "07",
+      "provincia_cod": "07",
+      "nombre": "Comendador",
+      "pagina_fuente": 115,
+      "municipio_cod_propuesto": "0701",
+      "municipio_par_one": "01",
+      "nombre_extraido": "comendador"
+    },
+    {
+      "region_cod": "07",
+      "provincia_cod": "07",
+      "nombre": "Bánica",
+      "pagina_fuente": 117,
+      "municipio_cod_propuesto": "0702",
+      "municipio_par_one": "02"
+    },
+    {
+      "region_cod": "07",
+      "provincia_cod": "07",
+      "nombre": "El Llano",
+      "pagina_fuente": 119,
+      "municipio_cod_propuesto": "0703",
+      "municipio_par_one": "03",
+      "nombre_extraido": "El llano"
+    },
+    {
+      "region_cod": "07",
+      "provincia_cod": "07",
+      "nombre": "Hondo Valle",
+      "pagina_fuente": 120,
+      "municipio_cod_propuesto": "0704",
+      "municipio_par_one": "04"
+    },
+    {
+      "region_cod": "07",
+      "provincia_cod": "07",
+      "nombre": "Pedro Santana",
+      "pagina_fuente": 121,
+      "municipio_cod_propuesto": "0705",
+      "municipio_par_one": "05"
+    },
+    {
+      "region_cod": "07",
+      "provincia_cod": "07",
+      "nombre": "Juan Santiago",
+      "pagina_fuente": 123,
+      "municipio_cod_propuesto": "0706",
+      "municipio_par_one": "06"
+    },
+    {
+      "region_cod": "08",
+      "provincia_cod": "08",
+      "nombre": "El Seibo",
+      "pagina_fuente": 127,
+      "municipio_cod_propuesto": "0801",
+      "municipio_par_one": "01"
+    },
+    {
+      "region_cod": "08",
+      "provincia_cod": "08",
+      "nombre": "Miches",
+      "pagina_fuente": 133,
+      "municipio_cod_propuesto": "0802",
+      "municipio_par_one": "02"
+    },
+    {
+      "region_cod": "01",
+      "provincia_cod": "09",
+      "nombre": "Moca",
+      "pagina_fuente": 139,
+      "municipio_cod_propuesto": "0901",
+      "municipio_par_one": "01"
+    },
+    {
+      "region_cod": "01",
+      "provincia_cod": "09",
+      "nombre": "Cayetano Germosén",
+      "pagina_fuente": 145,
+      "municipio_cod_propuesto": "0902",
+      "municipio_par_one": "02",
+      "nombre_extraido": "cayetano Germosén"
+    },
+    {
+      "region_cod": "01",
+      "provincia_cod": "09",
+      "nombre": "Gaspar Hernández",
+      "pagina_fuente": 146,
+      "municipio_cod_propuesto": "0903",
+      "municipio_par_one": "03"
+    },
+    {
+      "region_cod": "01",
+      "provincia_cod": "09",
+      "nombre": "Jamao Al Norte",
+      "pagina_fuente": 148,
+      "municipio_cod_propuesto": "0904",
+      "municipio_par_one": "04",
+      "nombre_extraido": "Jamao al Norte"
+    },
+    {
+      "region_cod": "01",
+      "provincia_cod": "09",
+      "nombre": "San Víctor",
+      "pagina_fuente": 149,
+      "municipio_cod_propuesto": "0905",
+      "municipio_par_one": "05"
+    },
+    {
+      "region_cod": "06",
+      "provincia_cod": "10",
+      "nombre": "Jimaní",
+      "pagina_fuente": 155,
+      "municipio_cod_propuesto": "1001",
+      "municipio_par_one": "01"
+    },
+    {
+      "region_cod": "06",
+      "provincia_cod": "10",
+      "nombre": "Duvergé",
+      "pagina_fuente": 156,
+      "municipio_cod_propuesto": "1002",
+      "municipio_par_one": "02"
+    },
+    {
+      "region_cod": "06",
+      "provincia_cod": "10",
+      "nombre": "La Descubierta",
+      "pagina_fuente": 157,
+      "municipio_cod_propuesto": "1003",
+      "municipio_par_one": "03"
+    },
+    {
+      "region_cod": "06",
+      "provincia_cod": "10",
+      "nombre": "Postrer Río",
+      "pagina_fuente": 157,
+      "municipio_cod_propuesto": "1004",
+      "municipio_par_one": "04"
+    },
+    {
+      "region_cod": "06",
+      "provincia_cod": "10",
+      "nombre": "Cristóbal",
+      "pagina_fuente": 158,
+      "municipio_cod_propuesto": "1005",
+      "municipio_par_one": "05"
+    },
+    {
+      "region_cod": "06",
+      "provincia_cod": "10",
+      "nombre": "Mella",
+      "pagina_fuente": 159,
+      "municipio_cod_propuesto": "1006",
+      "municipio_par_one": "06"
+    },
+    {
+      "region_cod": "08",
+      "provincia_cod": "11",
+      "nombre": "Higüey",
+      "pagina_fuente": 163,
+      "municipio_cod_propuesto": "1101",
+      "municipio_par_one": "01"
+    },
+    {
+      "region_cod": "08",
+      "provincia_cod": "11",
+      "nombre": "San Rafael del Yuma",
+      "pagina_fuente": 172,
+      "municipio_cod_propuesto": "1102",
+      "municipio_par_one": "02",
+      "nombre_extraido": "San rafael del Yuma"
+    },
+    {
+      "region_cod": "08",
+      "provincia_cod": "12",
+      "nombre": "La Romana",
+      "pagina_fuente": 179,
+      "municipio_cod_propuesto": "1201",
+      "municipio_par_one": "01"
+    },
+    {
+      "region_cod": "08",
+      "provincia_cod": "12",
+      "nombre": "Guaymate",
+      "pagina_fuente": 181,
+      "municipio_cod_propuesto": "1202",
+      "municipio_par_one": "02"
+    },
+    {
+      "region_cod": "08",
+      "provincia_cod": "12",
+      "nombre": "Villa Hermosa",
+      "pagina_fuente": 183,
+      "municipio_cod_propuesto": "1203",
+      "municipio_par_one": "03"
+    },
+    {
+      "region_cod": "02",
+      "provincia_cod": "13",
+      "nombre": "La Vega",
+      "pagina_fuente": 189,
+      "municipio_cod_propuesto": "1301",
+      "municipio_par_one": "01"
+    },
+    {
+      "region_cod": "02",
+      "provincia_cod": "13",
+      "nombre": "Constanza",
+      "pagina_fuente": 198,
+      "municipio_cod_propuesto": "1302",
+      "municipio_par_one": "02"
+    },
+    {
+      "region_cod": "02",
+      "provincia_cod": "13",
+      "nombre": "Jarabacoa",
+      "pagina_fuente": 201,
+      "municipio_cod_propuesto": "1303",
+      "municipio_par_one": "03"
+    },
+    {
+      "region_cod": "02",
+      "provincia_cod": "13",
+      "nombre": "Jima Abajo",
+      "pagina_fuente": 206,
+      "municipio_cod_propuesto": "1304",
+      "municipio_par_one": "04"
+    },
+    {
+      "region_cod": "03",
+      "provincia_cod": "14",
+      "nombre": "Nagua",
+      "pagina_fuente": 211,
+      "municipio_cod_propuesto": "1401",
+      "municipio_par_one": "01"
+    },
+    {
+      "region_cod": "03",
+      "provincia_cod": "14",
+      "nombre": "Cabrera",
+      "pagina_fuente": 215,
+      "municipio_cod_propuesto": "1402",
+      "municipio_par_one": "02",
+      "nombre_extraido": "cabrera"
+    },
+    {
+      "region_cod": "03",
+      "provincia_cod": "14",
+      "nombre": "El Factor",
+      "pagina_fuente": 218,
+      "municipio_cod_propuesto": "1403",
+      "municipio_par_one": "03"
+    },
+    {
+      "region_cod": "03",
+      "provincia_cod": "14",
+      "nombre": "Río San Juan",
+      "pagina_fuente": 219,
+      "municipio_cod_propuesto": "1404",
+      "municipio_par_one": "04"
+    },
+    {
+      "region_cod": "04",
+      "provincia_cod": "15",
+      "nombre": "Monte Cristi",
+      "pagina_fuente": 225,
+      "municipio_cod_propuesto": "1501",
+      "municipio_par_one": "01",
+      "nombre_extraido": "Monte cristi"
+    },
+    {
+      "region_cod": "04",
+      "provincia_cod": "15",
+      "nombre": "Castañuelas",
+      "pagina_fuente": 226,
+      "municipio_cod_propuesto": "1502",
+      "municipio_par_one": "02"
+    },
+    {
+      "region_cod": "04",
+      "provincia_cod": "15",
+      "nombre": "Guayubín",
+      "pagina_fuente": 226,
+      "municipio_cod_propuesto": "1503",
+      "municipio_par_one": "03"
+    },
+    {
+      "region_cod": "04",
+      "provincia_cod": "15",
+      "nombre": "Las Matas de Santa Cruz",
+      "pagina_fuente": 229,
+      "municipio_cod_propuesto": "1504",
+      "municipio_par_one": "04"
+    },
+    {
+      "region_cod": "04",
+      "provincia_cod": "15",
+      "nombre": "Pepillo Salcedo",
+      "pagina_fuente": 229,
+      "municipio_cod_propuesto": "1505",
+      "municipio_par_one": "05"
+    },
+    {
+      "region_cod": "04",
+      "provincia_cod": "15",
+      "nombre": "Villa Vásquez",
+      "pagina_fuente": 230,
+      "municipio_cod_propuesto": "1506",
+      "municipio_par_one": "06"
+    },
+    {
+      "region_cod": "06",
+      "provincia_cod": "16",
+      "nombre": "Pedernales",
+      "pagina_fuente": 235,
+      "municipio_cod_propuesto": "1601",
+      "municipio_par_one": "01"
+    },
+    {
+      "region_cod": "06",
+      "provincia_cod": "16",
+      "nombre": "Oviedo",
+      "pagina_fuente": 236,
+      "municipio_cod_propuesto": "1602",
+      "municipio_par_one": "02",
+      "nombre_extraido": "oviedo"
+    },
+    {
+      "region_cod": "05",
+      "provincia_cod": "17",
+      "nombre": "Baní",
+      "pagina_fuente": 242,
+      "municipio_cod_propuesto": "1701",
+      "municipio_par_one": "01"
+    },
+    {
+      "region_cod": "05",
+      "provincia_cod": "17",
+      "nombre": "Nizao",
+      "pagina_fuente": 249,
+      "municipio_cod_propuesto": "1702",
+      "municipio_par_one": "02"
+    },
+    {
+      "region_cod": "05",
+      "provincia_cod": "17",
+      "nombre": "Matanzas",
+      "pagina_fuente": 250,
+      "municipio_cod_propuesto": "1703",
+      "municipio_par_one": "03"
+    },
+    {
+      "region_cod": "01",
+      "provincia_cod": "18",
+      "nombre": "Puerto Plata",
+      "pagina_fuente": 256,
+      "municipio_cod_propuesto": "1801",
+      "municipio_par_one": "01"
+    },
+    {
+      "region_cod": "01",
+      "provincia_cod": "18",
+      "nombre": "Altamira",
+      "pagina_fuente": 262,
+      "municipio_cod_propuesto": "1802",
+      "municipio_par_one": "02",
+      "nombre_extraido": "altamira"
+    },
+    {
+      "region_cod": "01",
+      "provincia_cod": "18",
+      "nombre": "Guananico",
+      "pagina_fuente": 264,
+      "municipio_cod_propuesto": "1803",
+      "municipio_par_one": "03"
+    },
+    {
+      "region_cod": "01",
+      "provincia_cod": "18",
+      "nombre": "Imbert",
+      "pagina_fuente": 265,
+      "municipio_cod_propuesto": "1804",
+      "municipio_par_one": "04",
+      "nombre_extraido": "imbert"
+    },
+    {
+      "region_cod": "01",
+      "provincia_cod": "18",
+      "nombre": "Los Hidalgos",
+      "pagina_fuente": 266,
+      "municipio_cod_propuesto": "1805",
+      "municipio_par_one": "05",
+      "nombre_extraido": "los Hidalgos"
+    },
+    {
+      "region_cod": "01",
+      "provincia_cod": "18",
+      "nombre": "Luperón",
+      "pagina_fuente": 267,
+      "municipio_cod_propuesto": "1806",
+      "municipio_par_one": "06"
+    },
+    {
+      "region_cod": "01",
+      "provincia_cod": "18",
+      "nombre": "Sosúa",
+      "pagina_fuente": 269,
+      "municipio_cod_propuesto": "1807",
+      "municipio_par_one": "07"
+    },
+    {
+      "region_cod": "01",
+      "provincia_cod": "18",
+      "nombre": "Villa Isabela",
+      "pagina_fuente": 270,
+      "municipio_cod_propuesto": "1808",
+      "municipio_par_one": "08",
+      "nombre_extraido": "Villa isabela"
+    },
+    {
+      "region_cod": "01",
+      "provincia_cod": "18",
+      "nombre": "Villa Montellano",
+      "pagina_fuente": 272,
+      "municipio_cod_propuesto": "1809",
+      "municipio_par_one": "09"
+    },
+    {
+      "region_cod": "03",
+      "provincia_cod": "19",
+      "nombre": "Salcedo",
+      "pagina_fuente": 277,
+      "municipio_cod_propuesto": "1901",
+      "municipio_par_one": "01"
+    },
+    {
+      "region_cod": "03",
+      "provincia_cod": "19",
+      "nombre": "Tenares",
+      "pagina_fuente": 279,
+      "municipio_cod_propuesto": "1902",
+      "municipio_par_one": "02",
+      "nombre_extraido": "t enares"
+    },
+    {
+      "region_cod": "03",
+      "provincia_cod": "19",
+      "nombre": "Villa Tapia",
+      "pagina_fuente": 282,
+      "municipio_cod_propuesto": "1903",
+      "municipio_par_one": "03"
+    },
+    {
+      "region_cod": "03",
+      "provincia_cod": "20",
+      "nombre": "Samaná",
+      "pagina_fuente": 288,
+      "municipio_cod_propuesto": "2001",
+      "municipio_par_one": "01"
+    },
+    {
+      "region_cod": "03",
+      "provincia_cod": "20",
+      "nombre": "Sánchez",
+      "pagina_fuente": 291,
+      "municipio_cod_propuesto": "2002",
+      "municipio_par_one": "02"
+    },
+    {
+      "region_cod": "03",
+      "provincia_cod": "20",
+      "nombre": "Las Terrenas",
+      "pagina_fuente": 293,
+      "municipio_cod_propuesto": "2003",
+      "municipio_par_one": "03",
+      "nombre_extraido": "las t errenas"
+    },
+    {
+      "region_cod": "05",
+      "provincia_cod": "21",
+      "nombre": "San Cristóbal",
+      "pagina_fuente": 299,
+      "municipio_cod_propuesto": "2101",
+      "municipio_par_one": "01"
+    },
+    {
+      "region_cod": "05",
+      "provincia_cod": "21",
+      "nombre": "Sabana Grande de Palenque",
+      "pagina_fuente": 304,
+      "municipio_cod_propuesto": "2102",
+      "municipio_par_one": "02"
+    },
+    {
+      "region_cod": "05",
+      "provincia_cod": "21",
+      "nombre": "Bajos de Haina",
+      "pagina_fuente": 304,
+      "municipio_cod_propuesto": "2103",
+      "municipio_par_one": "03"
+    },
+    {
+      "region_cod": "05",
+      "provincia_cod": "21",
+      "nombre": "Cambita Garabitos",
+      "pagina_fuente": 306,
+      "municipio_cod_propuesto": "2104",
+      "municipio_par_one": "04",
+      "nombre_extraido": "cambita Garabitos"
+    },
+    {
+      "region_cod": "05",
+      "provincia_cod": "21",
+      "nombre": "Villa Altagracia",
+      "pagina_fuente": 309,
+      "municipio_cod_propuesto": "2105",
+      "municipio_par_one": "05"
+    },
+    {
+      "region_cod": "05",
+      "provincia_cod": "21",
+      "nombre": "Yaguate",
+      "pagina_fuente": 313,
+      "municipio_cod_propuesto": "2106",
+      "municipio_par_one": "06"
+    },
+    {
+      "region_cod": "05",
+      "provincia_cod": "21",
+      "nombre": "San Gregorio de Nigua",
+      "pagina_fuente": 314,
+      "municipio_cod_propuesto": "2107",
+      "municipio_par_one": "07"
+    },
+    {
+      "region_cod": "05",
+      "provincia_cod": "21",
+      "nombre": "Los Cacaos",
+      "pagina_fuente": 315,
+      "municipio_cod_propuesto": "2108",
+      "municipio_par_one": "08"
+    },
+    {
+      "region_cod": "07",
+      "provincia_cod": "22",
+      "nombre": "San Juan",
+      "pagina_fuente": 321,
+      "municipio_cod_propuesto": "2201",
+      "municipio_par_one": "01"
+    },
+    {
+      "region_cod": "07",
+      "provincia_cod": "22",
+      "nombre": "Bohechío",
+      "pagina_fuente": 329,
+      "municipio_cod_propuesto": "2202",
+      "municipio_par_one": "02"
+    },
+    {
+      "region_cod": "07",
+      "provincia_cod": "22",
+      "nombre": "El Cercado",
+      "pagina_fuente": 330,
+      "municipio_cod_propuesto": "2203",
+      "municipio_par_one": "03"
+    },
+    {
+      "region_cod": "07",
+      "provincia_cod": "22",
+      "nombre": "Juan de Herrera",
+      "pagina_fuente": 333,
+      "municipio_cod_propuesto": "2204",
+      "municipio_par_one": "04"
+    },
+    {
+      "region_cod": "07",
+      "provincia_cod": "22",
+      "nombre": "Las Matas de Farfán",
+      "pagina_fuente": 334,
+      "municipio_cod_propuesto": "2205",
+      "municipio_par_one": "05"
+    },
+    {
+      "region_cod": "07",
+      "provincia_cod": "22",
+      "nombre": "Vallejuelo",
+      "pagina_fuente": 338,
+      "municipio_cod_propuesto": "2206",
+      "municipio_par_one": "06"
+    },
+    {
+      "region_cod": "09",
+      "provincia_cod": "23",
+      "nombre": "San Pedro de Macorís",
+      "pagina_fuente": 343,
+      "municipio_cod_propuesto": "2301",
+      "municipio_par_one": "01"
+    },
+    {
+      "region_cod": "09",
+      "provincia_cod": "23",
+      "nombre": "Los Llanos",
+      "pagina_fuente": 347,
+      "municipio_cod_propuesto": "2302",
+      "municipio_par_one": "02",
+      "nombre_extraido": "los llanos"
+    },
+    {
+      "region_cod": "09",
+      "provincia_cod": "23",
+      "nombre": "Ramón Santana",
+      "pagina_fuente": 350,
+      "municipio_cod_propuesto": "2303",
+      "municipio_par_one": "03"
+    },
+    {
+      "region_cod": "09",
+      "provincia_cod": "23",
+      "nombre": "Consuelo",
+      "pagina_fuente": 351,
+      "municipio_cod_propuesto": "2304",
+      "municipio_par_one": "04",
+      "nombre_extraido": "consuelo"
+    },
+    {
+      "region_cod": "09",
+      "provincia_cod": "23",
+      "nombre": "Quisqueya",
+      "pagina_fuente": 352,
+      "municipio_cod_propuesto": "2305",
+      "municipio_par_one": "05"
+    },
+    {
+      "region_cod": "09",
+      "provincia_cod": "23",
+      "nombre": "Guayacanes",
+      "pagina_fuente": 353,
+      "municipio_cod_propuesto": "2306",
+      "municipio_par_one": "06"
+    },
+    {
+      "region_cod": "02",
+      "provincia_cod": "24",
+      "nombre": "Cotuí",
+      "pagina_fuente": 358,
+      "municipio_cod_propuesto": "2401",
+      "municipio_par_one": "01"
+    },
+    {
+      "region_cod": "02",
+      "provincia_cod": "24",
+      "nombre": "Cevicos",
+      "pagina_fuente": 363,
+      "municipio_cod_propuesto": "2402",
+      "municipio_par_one": "02"
+    },
+    {
+      "region_cod": "02",
+      "provincia_cod": "24",
+      "nombre": "Fantino",
+      "pagina_fuente": 365,
+      "municipio_cod_propuesto": "2403",
+      "municipio_par_one": "03"
+    },
+    {
+      "region_cod": "02",
+      "provincia_cod": "24",
+      "nombre": "Villa La Mata",
+      "pagina_fuente": 366,
+      "municipio_cod_propuesto": "2404",
+      "municipio_par_one": "04",
+      "nombre_extraido": "Villa la Mata"
+    },
+    {
+      "region_cod": "01",
+      "provincia_cod": "25",
+      "nombre": "Santiago",
+      "pagina_fuente": 373,
+      "municipio_cod_propuesto": "2501",
+      "municipio_par_one": "01"
+    },
+    {
+      "region_cod": "01",
+      "provincia_cod": "25",
+      "nombre": "Bisonó",
+      "pagina_fuente": 385,
+      "municipio_cod_propuesto": "2502",
+      "municipio_par_one": "02"
+    },
+    {
+      "region_cod": "01",
+      "provincia_cod": "25",
+      "nombre": "Jánico",
+      "pagina_fuente": 387,
+      "municipio_cod_propuesto": "2503",
+      "municipio_par_one": "03"
+    },
+    {
+      "region_cod": "01",
+      "provincia_cod": "25",
+      "nombre": "Licey al Medio",
+      "pagina_fuente": 390,
+      "municipio_cod_propuesto": "2504",
+      "municipio_par_one": "04"
+    },
+    {
+      "region_cod": "01",
+      "provincia_cod": "25",
+      "nombre": "San José de las Matas",
+      "pagina_fuente": 392,
+      "municipio_cod_propuesto": "2505",
+      "municipio_par_one": "05"
+    },
+    {
+      "region_cod": "01",
+      "provincia_cod": "25",
+      "nombre": "Tamboril",
+      "pagina_fuente": 400,
+      "municipio_cod_propuesto": "2506",
+      "municipio_par_one": "06",
+      "nombre_extraido": "t amboril"
+    },
+    {
+      "region_cod": "01",
+      "provincia_cod": "25",
+      "nombre": "Villa González",
+      "pagina_fuente": 401,
+      "municipio_cod_propuesto": "2507",
+      "municipio_par_one": "07"
+    },
+    {
+      "region_cod": "01",
+      "provincia_cod": "25",
+      "nombre": "Puñal",
+      "pagina_fuente": 403,
+      "municipio_cod_propuesto": "2508",
+      "municipio_par_one": "08"
+    },
+    {
+      "region_cod": "01",
+      "provincia_cod": "25",
+      "nombre": "Sabana Iglesia",
+      "pagina_fuente": 404,
+      "municipio_cod_propuesto": "2509",
+      "municipio_par_one": "09",
+      "nombre_extraido": "Sabana iglesia"
+    },
+    {
+      "region_cod": "01",
+      "provincia_cod": "25",
+      "nombre": "Baitoa",
+      "pagina_fuente": 405,
+      "municipio_cod_propuesto": "2510",
+      "municipio_par_one": "10"
+    },
+    {
+      "region_cod": "04",
+      "provincia_cod": "26",
+      "nombre": "San Ignacio de Sabaneta",
+      "pagina_fuente": 410,
+      "municipio_cod_propuesto": "2601",
+      "municipio_par_one": "01"
+    },
+    {
+      "region_cod": "04",
+      "provincia_cod": "26",
+      "nombre": "Villa Los Almácigos",
+      "pagina_fuente": 414,
+      "municipio_cod_propuesto": "2602",
+      "municipio_par_one": "02"
+    },
+    {
+      "region_cod": "04",
+      "provincia_cod": "26",
+      "nombre": "Monción",
+      "pagina_fuente": 416,
+      "municipio_cod_propuesto": "2603",
+      "municipio_par_one": "03"
+    },
+    {
+      "region_cod": "04",
+      "provincia_cod": "27",
+      "nombre": "Mao",
+      "pagina_fuente": 421,
+      "municipio_cod_propuesto": "2701",
+      "municipio_par_one": "01"
+    },
+    {
+      "region_cod": "04",
+      "provincia_cod": "27",
+      "nombre": "Esperanza",
+      "pagina_fuente": 424,
+      "municipio_cod_propuesto": "2702",
+      "municipio_par_one": "02"
+    },
+    {
+      "region_cod": "04",
+      "provincia_cod": "27",
+      "nombre": "Laguna Salada",
+      "pagina_fuente": 427,
+      "municipio_cod_propuesto": "2703",
+      "municipio_par_one": "03",
+      "nombre_extraido": "laguna Salada"
+    },
+    {
+      "region_cod": "02",
+      "provincia_cod": "28",
+      "nombre": "Bonao",
+      "pagina_fuente": 433,
+      "municipio_cod_propuesto": "2801",
+      "municipio_par_one": "01"
+    },
+    {
+      "region_cod": "02",
+      "provincia_cod": "28",
+      "nombre": "Maimón",
+      "pagina_fuente": 438,
+      "municipio_cod_propuesto": "2802",
+      "municipio_par_one": "02"
+    },
+    {
+      "region_cod": "02",
+      "provincia_cod": "28",
+      "nombre": "Piedra Blanca",
+      "pagina_fuente": 439,
+      "municipio_cod_propuesto": "2803",
+      "municipio_par_one": "03"
+    },
+    {
+      "region_cod": "09",
+      "provincia_cod": "29",
+      "nombre": "Monte Plata",
+      "pagina_fuente": 446,
+      "municipio_cod_propuesto": "2901",
+      "municipio_par_one": "01"
+    },
+    {
+      "region_cod": "09",
+      "provincia_cod": "29",
+      "nombre": "Bayaguana",
+      "pagina_fuente": 450,
+      "municipio_cod_propuesto": "2902",
+      "municipio_par_one": "02"
+    },
+    {
+      "region_cod": "09",
+      "provincia_cod": "29",
+      "nombre": "Sabana Grande de Boyá",
+      "pagina_fuente": 453,
+      "municipio_cod_propuesto": "2903",
+      "municipio_par_one": "03"
+    },
+    {
+      "region_cod": "09",
+      "provincia_cod": "29",
+      "nombre": "Yamasá",
+      "pagina_fuente": 456,
+      "municipio_cod_propuesto": "2904",
+      "municipio_par_one": "04"
+    },
+    {
+      "region_cod": "09",
+      "provincia_cod": "29",
+      "nombre": "Peralvillo",
+      "pagina_fuente": 460,
+      "municipio_cod_propuesto": "2905",
+      "municipio_par_one": "05"
+    },
+    {
+      "region_cod": "09",
+      "provincia_cod": "30",
+      "nombre": "Hato Mayor",
+      "pagina_fuente": 465,
+      "municipio_cod_propuesto": "3001",
+      "municipio_par_one": "01"
+    },
+    {
+      "region_cod": "09",
+      "provincia_cod": "30",
+      "nombre": "Sabana de La Mar",
+      "pagina_fuente": 469,
+      "municipio_cod_propuesto": "3002",
+      "municipio_par_one": "02",
+      "nombre_extraido": "Sabana de la Mar"
+    },
+    {
+      "region_cod": "09",
+      "provincia_cod": "30",
+      "nombre": "El Valle",
+      "pagina_fuente": 470,
+      "municipio_cod_propuesto": "3003",
+      "municipio_par_one": "03"
+    },
+    {
+      "region_cod": "05",
+      "provincia_cod": "31",
+      "nombre": "San José de Ocoa",
+      "pagina_fuente": 475,
+      "municipio_cod_propuesto": "3101",
+      "municipio_par_one": "01"
+    },
+    {
+      "region_cod": "05",
+      "provincia_cod": "31",
+      "nombre": "Sabana Larga",
+      "pagina_fuente": 479,
+      "municipio_cod_propuesto": "3102",
+      "municipio_par_one": "02",
+      "nombre_extraido": "Sabana larga"
+    },
+    {
+      "region_cod": "05",
+      "provincia_cod": "31",
+      "nombre": "Rancho Arriba",
+      "pagina_fuente": 480,
+      "municipio_cod_propuesto": "3103",
+      "municipio_par_one": "03"
+    },
+    {
+      "region_cod": "10",
+      "provincia_cod": "32",
+      "nombre": "Santo Domingo Este",
+      "pagina_fuente": 486,
+      "municipio_cod_propuesto": "3201",
+      "municipio_par_one": "01"
+    },
+    {
+      "region_cod": "10",
+      "provincia_cod": "32",
+      "nombre": "Santo Domingo Oeste",
+      "pagina_fuente": 491,
+      "municipio_cod_propuesto": "3202",
+      "municipio_par_one": "02",
+      "nombre_extraido": "Santo Domingo oeste"
+    },
+    {
+      "region_cod": "10",
+      "provincia_cod": "32",
+      "nombre": "Santo Domingo Norte",
+      "pagina_fuente": 493,
+      "municipio_cod_propuesto": "3203",
+      "municipio_par_one": "03"
+    },
+    {
+      "region_cod": "10",
+      "provincia_cod": "32",
+      "nombre": "Boca Chica",
+      "pagina_fuente": 498,
+      "municipio_cod_propuesto": "3204",
+      "municipio_par_one": "04"
+    },
+    {
+      "region_cod": "10",
+      "provincia_cod": "32",
+      "nombre": "San Antonio de Guerra",
+      "pagina_fuente": 499,
+      "municipio_cod_propuesto": "3205",
+      "municipio_par_one": "05",
+      "nombre_extraido": "San antonio de Guerra"
+    },
+    {
+      "region_cod": "10",
+      "provincia_cod": "32",
+      "nombre": "Los Alcarrizos",
+      "pagina_fuente": 501,
+      "municipio_cod_propuesto": "3206",
+      "municipio_par_one": "06"
+    },
+    {
+      "region_cod": "10",
+      "provincia_cod": "32",
+      "nombre": "Pedro Brand",
+      "pagina_fuente": 503,
+      "municipio_cod_propuesto": "3207",
+      "municipio_par_one": "07"
+    }
+  ],
+  "revision_nombres": {
+    "fecha": "2026-11-01",
+    "estado": "aprobada",
+    "correcciones_extraccion": 37,
+    "correcciones_tilde": 1,
+    "detalle": "REVISION-NOMBRES-ONE-2021.md",
+    "aprobacion": "Aplicar las 37 correcciones y usar Sánchez Ramírez con tilde"
+  }
+}

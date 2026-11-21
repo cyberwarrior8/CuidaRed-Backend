@@ -1,5 +1,6 @@
 /* Validación de entradas del seguimiento del adulto mayor · ID03/RF-12/RF-13/RF-14/RF-15. © 2026 Equipo CuidaRed – INTEC. */
 import { z } from 'zod';
+import { isBigintId } from '../../lib/bigint-id.js';
 import { createCollectionQuery } from '../../lib/collection-query.js';
 import { AppError } from '../../lib/errors.js';
 
@@ -12,10 +13,10 @@ export function uuidParam(value) {
   if (typeof value !== 'string' || !uuidPattern.test(value)) throw notFound();
   return value.toLowerCase();
 }
-// Identidades bigint de la base; el límite de 15 dígitos las mantiene representables como Number.
+// Identidades bigint de la base como texto decimal.
 export function bigintParam(value) {
-  if (typeof value !== 'string' || !/^[1-9]\d{0,14}$/.test(value)) throw notFound();
-  return Number(value);
+  if (!isBigintId(value)) throw notFound();
+  return value;
 }
 
 export function parseBody(schema, body) {

@@ -47,16 +47,14 @@ language sql stable set search_path = '' as $$
     from cuidared.membresia m
     join cuidared.rol r on r.rol_id = m.rol_id
     join cuidared.usuario u on u.usuario_id = m.usuario_id and u.estado::text = 'activo'
-    -- Las invitaciones pendientes reservan cupo (mismo criterio que fase-2c al invitar y aceptar).
     where m.cuenta_id = p_cuenta_id
-      and (m.estado::text = 'pendiente'
-        or (m.estado::text = 'activa' and m.fecha_inicio <= cuidared_interno.hoy()
-            and (m.fecha_fin is null or m.fecha_fin >= cuidared_interno.hoy())))
+      and m.estado::text = 'activa' and m.fecha_inicio <= cuidared_interno.hoy()
+      and (m.fecha_fin is null or m.fecha_fin >= cuidared_interno.hoy())
   )
   select jsonb_build_object(
     'envejecientes', (select count(*) from cuidared.envejeciente e
                       where e.cuenta_id = p_cuenta_id and e.estado::text = 'activo'),
-    'usuarios', (select count(distinct usuario_id) from miembros where rol <> 'voluntario'),
+    'usuarios', (select count(distinct usuario_id) from miembros where rol in ('administrador','coordinador','cuidador')),
     'familiares', (select count(distinct usuario_id) from miembros where rol = 'familiar'),
     'voluntarios', (select count(distinct usuario_id) from miembros where rol = 'voluntario'))
 $$;
@@ -66,7 +64,7 @@ create function cuidared_interno.cuenta_detalle(p_cuenta_id bigint, p_usuario_id
 language sql stable set search_path = '' as $$
   select jsonb_build_object(
     'cuenta', jsonb_build_object(
-      'cuenta_id', c.cuenta_id,
+      'cuenta_id', c.cuenta_id::text,
       'nombre', c.nombre,
       'tipo', t.codigo,
       'categoria', jsonb_build_object('categoria_cuenta_id', cc.categoria_cuenta_id, 'nombre', cc.nombre),
@@ -125,7 +123,7 @@ begin
   update cuidared.cuenta c
   set suscripcion_estado = 'vencida', fecha_actualizacion = pg_catalog.now()
   where (c.suscripcion_estado::text = 'prueba' and c.fecha_fin_prueba is not null
-         and c.fecha_fin_prueba < cuidared_interno.hoy())
+         and c.fecha_fin_prueba <= now())
      or (c.suscripcion_estado::text = 'activa' and c.fecha_fin_vigencia is not null
          and c.fecha_fin_vigencia < cuidared_interno.hoy());
   get diagnostics v_filas = row_count;
@@ -158,6 +156,7 @@ language plpgsql security definer set search_path = '' as $$
 declare
   v_uid uuid := cuidared_interno.exigir_sesion();
   v_hoy date := cuidared_interno.hoy();
+  v_inicio timestamptz := pg_catalog.now();
   v_tipo_cod text;
   v_tipo smallint;
   v_categoria integer;
@@ -210,7 +209,7 @@ begin
   perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('cuidared.registrar_cuenta:' || v_uid::text, 0));
   if exists (select 1 from cuidared.cuenta c
              where c.usuario_titular_id = v_uid and c.suscripcion_estado::text = 'prueba'
-               and c.fecha_fin_prueba is not null and c.fecha_fin_prueba >= v_hoy) then
+               and c.fecha_fin_prueba > v_inicio) then
     raise exception 'CR_PRUEBA_EN_CURSO' using errcode = 'P0001';
   end if;
 
@@ -218,7 +217,7 @@ begin
                                suscripcion_estado, prueba_gratuita, fecha_inicio_prueba, fecha_fin_prueba, plan_id,
                                usuario_titular_id)
   values (v_nombre, v_tipo, v_categoria::smallint, v_municipio, v_direccion, v_telefono, v_correo,
-          'prueba', true, v_hoy, v_hoy + 7, null, v_uid)
+          'prueba', true, v_inicio, v_inicio + interval '168 hours', null, v_uid)
   returning cuenta_id into v_cuenta_id;
 
   -- fecha_inicio explícita: el valor por defecto usa CURRENT_DATE (UTC) y no la fecha de negocio de hoy().
@@ -328,11 +327,17 @@ $$;
 
 /* ───────────── 4. Configuración de la cuenta (RF-19) ───────────── */
 
+alter table cuidared.configuracion_cuenta enable row level security;
+revoke all on cuidared.configuracion_cuenta from public, anon, authenticated;
+
 -- Cualquier miembro activo. Arreglo de {nombre, valor, tipo_dato, es_propio, valor_general, descripcion}.
 create function cuidared_api.api_obtener_configuracion(p_cuenta_id bigint) returns jsonb
 language plpgsql security definer set search_path = '' as $$
 declare v_ctx jsonb := cuidared_interno.exigir_miembro(p_cuenta_id);
 begin
+  if not cuidared_interno.acceso_operativo(p_cuenta_id) then
+    raise exception 'CR_CUENTA_SIN_ACCESO' using errcode = 'P0001';
+  end if;
   return cuidared_interno.configuracion_efectiva(p_cuenta_id);
 end;
 $$;
@@ -405,11 +410,11 @@ begin
       'acceso_operativo', cuidared_interno.acceso_operativo(c.cuenta_id),
       'prueba', jsonb_build_object(
         'gratuita', c.prueba_gratuita,
-        'vigente', c.suscripcion_estado::text = 'prueba' and c.fecha_fin_prueba is not null and c.fecha_fin_prueba >= v_hoy,
+        'vigente', c.suscripcion_estado::text = 'prueba' and cuidared_interno.acceso_operativo(c.cuenta_id),
         'fecha_inicio', c.fecha_inicio_prueba,
         'fecha_fin', c.fecha_fin_prueba,
         'dias_restantes', case when c.suscripcion_estado::text = 'prueba' and c.fecha_fin_prueba is not null
-                               then greatest(0, c.fecha_fin_prueba - v_hoy) else 0 end),
+                               then greatest(0, ceil(extract(epoch from c.fecha_fin_prueba - now()) / 86400))::int else 0 end),
       'plan', case when p.plan_id is null then null else jsonb_build_object(
         'plan_id', p.plan_id, 'nombre', p.nombre, 'categoria', pc.nombre, 'precio', p.precio,
         'periodicidad', p.periodicidad, 'duracion_dias', p.duracion_dias, 'resumen', p.resumen) end,

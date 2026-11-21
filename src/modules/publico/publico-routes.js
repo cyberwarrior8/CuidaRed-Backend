@@ -53,23 +53,25 @@ function leerCodigo(codigo) {
 }
 
 /*
- * Rutas /publico/* montadas ANTES de requireSession: no hay identidad. Cada ruta usa el cliente anon del gateway, que solo
- * acepta RPC `api_publico_*`, con su propio límite de peticiones, entrada estricta (Zod) y respuestas que no revelan datos
+ * Rutas /publico/* montadas ANTES de requireSession. Express llama las RPC con su cliente dedicado,
+ * aplica límites de peticiones y valida entradas y respuestas que no revelan datos
  * de cuentas ni de adultos. Nunca se listan cuentas Familia ni se confirma si un adulto existe.
  *
  *   GET  /publico/organizaciones                       { cuenta_id, nombre } de organizaciones con acceso operativo
  *   POST /publico/solicitudes-visita                   crea la solicitud y devuelve el código UNA vez
  *   POST /publico/solicitudes-visita/consulta          { codigo } → estado público
- *   POST /publico/solicitudes-visita/observacion       { codigo, observacion } → visita realizada
+ *   POST /publico/solicitudes-visita/observacion       { codigo, observacion } para una visita realizada
  */
-export function createPublicoRouter(deps) {
+export function createPublicoRouter(deps, rpc) {
   const router = Router({ mergeParams: true });
-  // El cliente anon se pide en cada petición: así el router se monta aunque el gateway no lo ofrezca (pruebas).
-  const rpc = (nombre, parametros) => deps.gateway.publico().rpc(nombre, parametros);
   const huella = (codigo) => hashCodigo(codigo, deps.env?.CODIGO_SEGUIMIENTO_SECRETO);
   const log = (res, action) =>
     deps.audit({ requestId: res.locals.requestId, action, result: 'success' });
 
+  router.use((_req, res, next) => {
+    res.set('Cache-Control', 'no-store');
+    next();
+  });
   router.use(limitador(LIMITE_PUBLICO));
 
   router.get('/organizaciones', async (_req, res) => {
@@ -78,9 +80,9 @@ export function createPublicoRouter(deps) {
   });
 
   router.post('/solicitudes-visita', limitador(LIMITE_CREACION), async (req, res) => {
-    const datos = parseBody(crearSolicitudSchema, req.body);
+    const { idempotencia, ...datos } = parseBody(crearSolicitudSchema, req.body);
     // El código se genera aquí y a la base solo llega su hash: ni la base ni los registros guardan el código.
-    const codigo = generarCodigoSeguimiento();
+    const codigo = generarCodigoSeguimiento(idempotencia, deps.env?.CODIGO_SEGUIMIENTO_SECRETO);
     const creada = salida(
       solicitudCreadaSchema,
       await rpc('api_publico_crear_solicitud', {
@@ -98,7 +100,15 @@ export function createPublicoRouter(deps) {
       estadoPublicoSchema,
       await rpc('api_publico_consultar_solicitud', { p_codigo_hash: hash }),
     );
-    res.json({ data: { ...estado, estado_texto: ESTADO_TEXTO[estado.estado] } });
+    res.json({
+      data: {
+        ...estado,
+        estado_texto:
+          estado.estado === 'autorizada' && estado.reprogramada
+            ? 'Reprogramada'
+            : ESTADO_TEXTO[estado.estado],
+      },
+    });
   });
 
   router.post('/solicitudes-visita/observacion', async (req, res) => {
@@ -107,7 +117,10 @@ export function createPublicoRouter(deps) {
     const texto = parseBody(textoObservacion, observacion);
     const estado = salida(
       estadoPublicoSchema,
-      await rpc('api_publico_registrar_observacion', { p_codigo_hash: hash, p_observacion: texto }),
+      await rpc('api_publico_registrar_observacion_posterior', {
+        p_codigo_hash: hash,
+        p_observacion: texto,
+      }),
     );
     log(res, 'solicitud_visita.observacion');
     res.json({ data: { ...estado, estado_texto: ESTADO_TEXTO[estado.estado] } });

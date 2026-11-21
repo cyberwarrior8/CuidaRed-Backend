@@ -1,8 +1,7 @@
-/* Pruebas API CR-164: GET /me con cuentas, roles y vigencia, sin base real. © 2026 Equipo CuidaRed – INTEC. */
+/* Perfil, cuentas paginadas e invitaciones independientes · CR-164. © 2026 Equipo CuidaRed – INTEC. */
 import request from 'supertest';
-import { describe, expect, it, vi } from 'vitest';
-import { mapRpcError } from '../src/modules/access/supabase-gateway.js';
-import { permisosDe } from '../src/modules/cuentas/permisos.js';
+import { describe, expect, it } from 'vitest';
+import { unavailable } from '../src/lib/errors.js';
 import {
   contexto,
   contextoVencido,
@@ -13,151 +12,119 @@ import {
   usuarioId,
 } from './cuentas-support.js';
 
-const pedirMe = (app) => conSesion(request(app).get('/api/v1/me'));
+const pedir = (app, ruta) => conSesion(request(app).get('/api/v1' + ruta));
 
-describe('CR-164: GET /me con cuentas', () => {
-  it('conserva identity y profile de la fase 1 y agrega cuentas sin cuenta activa en el servidor', async () => {
-    const rpc = rpcPorNombre({ api_mis_cuentas: () => ({ activas: [], pendientes: [] }) });
-    const res = await pedirMe(crearApp({ rpc }).app).expect(200);
-    expect(res.body.data.identity).toEqual({ id: usuarioId, email: perfil.correo });
-    expect(res.body.data.profile).toMatchObject({
-      id: usuarioId,
-      cedula: '00112345678',
-      estado: 'activo',
-    });
-    expect(res.body.data.cuentas).toEqual([]);
-    expect(res.body.data.cuenta_activa_id).toBeNull();
-    expect(res.headers['cache-control']).toBe('no-store');
-    expect(rpc).toHaveBeenCalledWith('api_mis_cuentas');
-  });
-
-  it('cada cuenta activa lleva su propio rol, permisos, vigencia, funcionalidades y límites', async () => {
-    const familia = contexto('coordinador', 'familia');
-    const organizacion = contexto('cuidador', 'organizacion', {
-      cuenta_id: 9,
-      nombre: 'Fundación Esperanza',
-      es_titular: false,
-      suscripcion_estado: 'activa',
-      plan_id: 3,
-      funcionalidades: ['registro_visitas', 'tablon_notificaciones'],
-      limites: { envejecientes: 15, usuarios: 20, familiares: null },
-    });
+describe('CR-164: el perfil de fase 1 funciona con las RPC de cuentas ausentes', () => {
+  it('conserva identidad y perfil aunque el catálogo de cuentas no responda', async () => {
     const rpc = rpcPorNombre({
-      api_mis_cuentas: () => ({ activas: [familia, organizacion], pendientes: [] }),
+      api_mis_cuentas: () => {
+        throw unavailable();
+      },
     });
-    const { body } = await pedirMe(crearApp({ rpc }).app).expect(200);
-    expect(body.data.cuentas).toHaveLength(2);
-    const [primera, segunda] = body.data.cuentas;
-    expect(primera).toEqual({
-      cuenta_id: '7',
-      nombre: 'Familia Pérez',
-      tipo: 'familia',
+    const { app } = crearApp({ rpc });
+    const res = await pedir(app, '/me').expect(200);
+    expect(res.body.data).toEqual({
+      identity: { id: usuarioId, email: perfil.correo },
+      profile: {
+        id: usuarioId,
+        cedula: perfil.cedula,
+        nombres: perfil.nombres,
+        apellidos: perfil.apellidos,
+        correo: perfil.correo,
+        telefono: null,
+        estado: 'activo',
+      },
+    });
+    expect(rpc).not.toHaveBeenCalled();
+    await pedir(app, '/cuentas').expect(503);
+    await pedir(app, '/me').expect(200);
+  });
+});
+
+describe('GET /cuentas y /me/membresias', () => {
+  it('mantiene cuentas activas con sus permisos y conserva ids bigint y metadatos', async () => {
+    const cuentaId = '9223372036854775807';
+    const rpc = rpcPorNombre({
+      api_mis_cuentas: () => ({
+        items: [
+          contexto('coordinador', 'familia', { cuenta_id: cuentaId }),
+          contextoVencido('cuidador', 'organizacion'),
+        ],
+        total: 22,
+      }),
+    });
+    const res = await pedir(
+      crearApp({ rpc }).app,
+      '/cuentas?page=2&sort=-nombre&filter[tipo_cuenta]=familia',
+    ).expect(200);
+    expect(res.body.meta).toEqual({ page: 2, limit: 20, total: 22, totalPages: 2 });
+    expect(res.body.data[0]).toMatchObject({
+      cuenta_id: cuentaId,
       rol: 'coordinador',
       estado_membresia: 'activa',
-      permisos: permisosDe('coordinador', 'familia'),
-      estado_suscripcion: 'prueba',
-      funcionalidades: ['registro_visitas', 'necesidades_diarias'],
-      es_titular: true,
-      acceso_operativo: true,
-      limites: { envejecientes: 2, usuarios: 4, familiares: 2 },
     });
-    expect(segunda).toMatchObject({
-      cuenta_id: '9',
-      tipo: 'organizacion',
-      rol: 'cuidador',
-      estado_suscripcion: 'activa',
-      es_titular: false,
-      limites: { envejecientes: 15, usuarios: 20, familiares: null },
-    });
-    // Sin mezclar permisos entre cuentas: lo que gestiona en una no se concede en la otra.
-    expect(primera.permisos).toContain('usuarios:gestionar');
-    expect(segunda.permisos).not.toContain('usuarios:gestionar');
-    expect(segunda.permisos).toEqual(permisosDe('cuidador', 'organizacion'));
-  });
-
-  it('una cuenta vencida sigue listada, marcada sin acceso operativo', async () => {
-    const rpc = rpcPorNombre({
-      api_mis_cuentas: () => ({
-        activas: [contextoVencido('administrador', 'organizacion')],
-        pendientes: [],
-      }),
-    });
-    const { body } = await pedirMe(crearApp({ rpc }).app).expect(200);
-    expect(body.data.cuentas[0]).toMatchObject({
-      estado_suscripcion: 'vencida',
-      acceso_operativo: false,
-      funcionalidades: [],
+    expect(res.body.data[1]).toMatchObject({ rol: 'cuidador', acceso_operativo: false });
+    expect(rpc).toHaveBeenCalledWith('api_mis_cuentas', {
+      p_filtros: { tipo_cuenta: 'familia' },
+      p_orden: [
+        { field: 'nombre', direction: 'desc' },
+        { field: 'cuenta_id', direction: 'asc' },
+      ],
+      p_offset: 20,
+      p_limit: 20,
     });
   });
 
-  it('las membresías pendientes salen sin permisos ni acceso', async () => {
+  it('una página vacía conserva el total y la paginación', async () => {
+    const rpc = rpcPorNombre({ api_mis_cuentas: () => ({ items: [], total: 2 }) });
+    const res = await pedir(crearApp({ rpc }).app, '/cuentas?page=2').expect(200);
+    expect(res.body).toEqual({ data: [], meta: { page: 2, limit: 20, total: 2, totalPages: 1 } });
+  });
+
+  it.each(['?limit=101', '?filter[estado]=activa', '?sort=-usuario_id', '?page=1&page=2'])(
+    'rechaza %s antes de la RPC',
+    async (query) => {
+      const rpc = rpcPorNombre({});
+      await pedir(crearApp({ rpc }).app, '/cuentas' + query).expect(422);
+      expect(rpc).not.toHaveBeenCalled();
+    },
+  );
+
+  it('las invitaciones se listan por separado y sin conceder permisos', async () => {
     const rpc = rpcPorNombre({
-      api_mis_cuentas: () => ({
-        activas: [contexto()],
-        pendientes: [
-          {
-            membresia_id: 31,
-            cuenta_id: 12,
-            nombre: 'Hogar Luz',
-            tipo: 'organizacion',
-            rol: 'voluntario',
-          },
-        ],
-      }),
+      api_mis_invitaciones: () => [
+        { cuenta_id: '7', membresia_id: '31', nombre: 'Familia', tipo: 'familia', rol: 'familiar' },
+      ],
     });
-    const { body } = await pedirMe(crearApp({ rpc }).app).expect(200);
-    expect(body.data.cuentas.map((c) => c.estado_membresia)).toEqual(['activa', 'pendiente']);
-    expect(body.data.cuentas[1]).toEqual({
-      cuenta_id: '12',
-      nombre: 'Hogar Luz',
-      tipo: 'organizacion',
-      rol: 'voluntario',
+    const res = await pedir(crearApp({ rpc }).app, '/me/membresias').expect(200);
+    expect(res.body.data[0]).toMatchObject({
+      membresia_id: '31',
       estado_membresia: 'pendiente',
       permisos: [],
-      estado_suscripcion: null,
-      funcionalidades: [],
-      es_titular: false,
       acceso_operativo: false,
-      limites: null,
-      membresia_id: '31',
     });
+    expect(rpc).toHaveBeenCalledWith('api_mis_invitaciones');
   });
 
-  it('no publica campos internos de la RPC ni identificadores de otras personas', async () => {
+  it('rechaza una respuesta rota o un id redondeado como número', async () => {
     const rpc = rpcPorNombre({
       api_mis_cuentas: () => ({
-        activas: [{ ...contexto(), usuario_titular_id: 'otra-persona', plan_precio: 650 }],
-        pendientes: [],
+        items: [contexto('coordinador', 'familia', { cuenta_id: 9007199254740992 })],
+        total: 1,
       }),
     });
-    const { body } = await pedirMe(crearApp({ rpc }).app).expect(200);
-    expect(JSON.stringify(body)).not.toMatch(/otra-persona|plan_precio|membresia_id/);
+    await pedir(crearApp({ rpc }).app, '/cuentas').expect(503);
   });
 
-  it('un fallo de la base no se disfraza de «sin cuentas»', async () => {
-    const rpc = vi.fn().mockRejectedValue(mapRpcError({ code: 'PGRST202' }));
-    await pedirMe(crearApp({ rpc }).app).expect(503);
-  });
-
-  it.each([
-    ['respuesta vacía', null],
-    ['sin pendientes', { activas: [] }],
-    ['rol desconocido', { activas: [contexto('admin', 'organizacion')], pendientes: [] }],
-    ['tipo desconocido', { activas: [contexto('coordinador', 'club')], pendientes: [] }],
-    [
-      'permisos que no son lista',
-      { activas: [contexto('coordinador', 'familia', { permisos: 'todo' })], pendientes: [] },
-    ],
-  ])('un contrato roto de la base es indisponibilidad: %s', async (_caso, roto) => {
-    const rpc = rpcPorNombre({ api_mis_cuentas: () => roto });
-    await pedirMe(crearApp({ rpc }).app).expect(503);
-  });
-
-  it('sin sesión vigente no consulta las cuentas', async () => {
-    const rpc = rpcPorNombre({ api_mis_cuentas: () => ({ activas: [], pendientes: [] }) });
-    const { app, repository } = crearApp({ rpc });
-    repository.session.mockResolvedValue({ vigente: false });
-    await pedirMe(app).expect(401);
-    expect(rpc).not.toHaveBeenCalled();
+  it('la selección por ruta conserva el bigint y rechaza un contexto de otra cuenta', async () => {
+    const id = '9007199254740993';
+    const rpc = rpcPorNombre({
+      api_contexto_cuenta: ({ p_cuenta_id }) =>
+        contexto('coordinador', 'familia', { cuenta_id: p_cuenta_id }),
+    });
+    await pedir(crearApp({ rpc }).app, '/cuentas/' + id + '/contexto').expect(200);
+    expect(rpc).toHaveBeenCalledWith('api_contexto_cuenta', { p_cuenta_id: id });
+    const equivocada = rpcPorNombre({ api_contexto_cuenta: () => contexto() });
+    await pedir(crearApp({ rpc: equivocada }).app, '/cuentas/' + id + '/contexto').expect(503);
   });
 });

@@ -3,11 +3,18 @@
 /*
  * Cada método llama una RPC con el JWT del usuario (`res.locals.access.repository.rpc`). La identidad nunca viaja en
  * los parámetros: la RPC la toma de auth.uid() y vuelve a autorizar. Las RPC están en
- * docs/propuestas/fase-2b-cuentas.sql (api_mis_cuentas, en fase-2a-base.sql).
+ * docs/propuestas/fase-2a-base.sql y fase-2b-cuentas.sql.
  */
 export function createCuentasRepository(rpc) {
   return {
-    misCuentas: () => rpc('api_mis_cuentas'),
+    listarPropias: ({ filters, sort, offset, limit }) =>
+      rpc('api_mis_cuentas', {
+        p_filtros: filters,
+        p_orden: sort,
+        p_offset: offset,
+        p_limit: limit,
+      }),
+    invitaciones: () => rpc('api_mis_invitaciones'),
     registrar: (datos) => rpc('api_registrar_cuenta', { p_datos: datos }),
     obtener: (cuentaId) => rpc('api_obtener_cuenta', { p_cuenta_id: cuentaId }),
     actualizar: (cuentaId, datos) =>
