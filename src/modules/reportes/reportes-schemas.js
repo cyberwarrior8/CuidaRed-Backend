@@ -188,6 +188,11 @@ const texto = z.string();
 const riesgoVigente = z.enum(['alto', 'medio', 'bajo']).nullable();
 const municipio = z.object({ codigo: texto, nombre: texto.nullable() });
 const persona = z.object({ usuario_id: uuid, nombres: texto, apellidos: texto });
+export const opcionesReporteDto = z.object({
+  municipios: z.array(municipio),
+  sectores: z.array(texto),
+  asignados: z.array(persona.extend({ rol: z.enum(['cuidador', 'voluntario']) })),
+});
 const nombrePersona = z.object({ nombres: texto, apellidos: texto });
 const generadoPor = z.object({
   nombres: texto,
@@ -239,14 +244,16 @@ const casoResumen = z.object({
     prioritarias_abiertas: entero,
   }),
   necesidades_activas: entero,
-  seguimiento: z.object({
-    ultima_visita_id: uuid.nullable(),
-    ultima_visita_fecha: fecha.nullable(),
-    fecha_referencia: fecha,
-    dias_sin_visita: z.int(),
-    umbral_dias: entero,
-    vencido: z.boolean(),
-  }),
+  seguimiento: z
+    .object({
+      ultima_visita_id: uuid.nullable(),
+      ultima_visita_fecha: fecha.nullable(),
+      fecha_referencia: fecha,
+      dias_sin_visita: z.int(),
+      umbral_dias: entero,
+      vencido: z.boolean(),
+    })
+    .nullable(),
   asignados: z.object({
     total: entero,
     cuidadores: z.array(persona),
@@ -257,7 +264,7 @@ export const resumenPagina = z.object({ items: z.array(casoResumen), total: ente
 
 export const indicadoresDto = z.object({
   fecha_calculo: fecha,
-  umbral_dias_sin_visita: entero,
+  umbral_dias_sin_visita: entero.nullable(),
   casos_activos: entero,
   por_prioridad: z.object({ alta: entero, media: entero, baja: entero }),
   por_estado_atencion: z.object(Object.fromEntries(ESTADOS_ATENCION.map((e) => [e, entero]))),
@@ -306,6 +313,8 @@ const REPORTES = {
     campo_fecha: 'fecha_visita',
     indicadores: z.object({
       visitas_realizadas: entero,
+      visitas_personales: entero,
+      visitas_institucionales: entero,
       atenciones: entero,
       adultos_visitados: entero,
       adultos_activos: entero,
@@ -314,7 +323,7 @@ const REPORTES = {
       situaciones_criticas: entero,
       visitas_compartidas: entero,
     }),
-    series: series(['por_mes', 'por_estado_general']),
+    series: series(['por_mes', 'por_tipo_visita', 'por_estado_general']),
     detalle: z.object({
       visita_id: uuid,
       fecha,
@@ -322,6 +331,7 @@ const REPORTES = {
       hora_fin: hora.nullable(),
       razon: texto.nullable(),
       origen: z.enum(['interna', 'solicitud']),
+      tipo_visita: z.enum(['personal', 'institucional']),
       responsables: z.array(persona),
       adultos: z.array(
         z.object({

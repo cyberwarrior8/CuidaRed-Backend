@@ -65,6 +65,17 @@ export function createReportesRouter({ audit, now = () => new Date() }) {
     res.json({ data: await repo(res).indicadores(cuenta(res)) });
   });
 
+  router.get('/resumen-casos/opciones', requirePermiso('resumen:ver'), async (req, res) => {
+    sinParametros(req.query);
+    res.json({ data: await repo(res).opciones(cuenta(res), 'resumen') });
+  });
+
+  router.get('/reportes/opciones', requirePermiso('reportes:ver'), async (req, res) => {
+    exigirRequisitos(res.locals.cuenta, { funcionalidades: funcionalidadesDe() });
+    sinParametros(req.query);
+    res.json({ data: await repo(res).opciones(cuenta(res), 'reportes') });
+  });
+
   router.get('/reportes/analisis-avanzado', requirePermiso('reportes:ver'), async (req, res) => {
     exigirRequisitos(res.locals.cuenta, {
       funcionalidades: funcionalidadesDe({ tipo: 'analisis_avanzado' }),

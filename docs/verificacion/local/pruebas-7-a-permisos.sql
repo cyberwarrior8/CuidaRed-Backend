@@ -28,6 +28,8 @@ declare
   v_orden text[] := array['prioridad'];
   v_tipo text;
   v_r jsonb;
+  v_adulto_tardio uuid;
+  v_adulto_inactivo uuid;
 begin
   perform pruebas.miembro(v_org, v_coord, 'coordinador');
   perform pruebas.miembro(v_org, v_cuidador, 'cuidador');
@@ -168,6 +170,7 @@ begin
   /* Aislamiento: sin membresía en la cuenta no hay acceso, ni siquiera a sus indicadores. */
   perform pruebas.como(v_admin);
   perform pruebas.error(format('select cuidared_api.api_resumen_casos_indicadores(%s)', v_fam), '42501');
+  perform pruebas.error(format('select cuidared_api.api_reporte_opciones(%s, %L)', v_fam, 'resumen'), '42501');
   perform pruebas.error(format('select cuidared_api.api_reporte(%s, %L, %L)', v_org_avanzada, 'adultos', v_vacio), '42501');
   perform pruebas.como(v_coord);
   perform pruebas.error(format('select cuidared_api.api_informe_medico(%s, %L)', v_org, v_adulto_fam), 'P0002');
@@ -191,15 +194,38 @@ begin
   perform pruebas.error(format('select cuidared_api.api_registrar_exportacion_reporte(%s, %L)', v_org,
     '{"tipo":"adultos","formato":"pdf","filtros":{"tipo_necesidad_id":1}}'), '22023');
 
+  /* Opciones completas, distintas y de alcance limitado. */
+  perform pruebas.envejeciente(v_org, 'Adulto', 'Caso ' || g) from generate_series(1, 100) g;
+  v_adulto_tardio := pruebas.envejeciente(v_org, 'Zoraida', 'Caso 101');
+  v_adulto_inactivo := pruebas.envejeciente(v_org, 'Teresa', 'Inactiva', 'F', 'inactivo');
+  update cuidared.envejeciente set zona = 'Sector 101' where envejeciente_id in (v_adulto_tardio, v_adulto);
+  update cuidared.envejeciente set zona = 'Sector histórico' where envejeciente_id = v_adulto_inactivo;
+  update cuidared.envejeciente set zona = 'Sector ajeno' where envejeciente_id = v_adulto_fam;
+  v_r := cuidared_api.api_reporte_opciones(v_org, 'resumen');
+  perform pruebas.afirmar((select count(*) from jsonb_array_elements_text(v_r->'sectores') s where s = 'Sector 101') = 1
+    and not (v_r->'sectores' ?| array['Sector histórico', 'Sector ajeno'])
+    and v_r->'asignados' @> jsonb_build_array(jsonb_build_object('usuario_id', v_cuidador, 'rol', 'cuidador')),
+    'opciones del resumen incluyen todo el alcance activo sin repetir');
+  v_r := cuidared_api.api_reporte_opciones(v_org, 'reportes');
+  perform pruebas.afirmar(v_r->'sectores' ?& array['Sector 101', 'Sector histórico']
+    and not (v_r->'sectores' ? 'Sector ajeno') and v_r->'asignados' = '[]'::jsonb,
+    'opciones de reportes incluyen históricos de la cuenta y omiten personal');
+  perform pruebas.como(v_fam_coord);
+  perform pruebas.afirmar(cuidared_api.api_reporte_opciones(v_fam, 'resumen')->'sectores' ? 'Sector ajeno',
+    'el resumen conserva opciones de Familia sin plan de métricas');
+  perform pruebas.error(format('select cuidared_api.api_reporte_opciones(%s, %L)', v_fam, 'reportes'), '42501');
+
   /* Privilegios: RPC solo para authenticated; funciones internas sin ejecución para los roles de la API. */
   perform pruebas.afirmar(
     has_function_privilege('authenticated', 'cuidared_api.api_reporte(bigint,text,jsonb)', 'EXECUTE')
     and has_function_privilege('authenticated', 'cuidared_api.api_informe_medico(bigint,uuid)', 'EXECUTE')
     and has_function_privilege('authenticated', 'cuidared_api.api_resumen_casos_listar(bigint,jsonb,text[],integer,bigint)', 'EXECUTE')
+    and has_function_privilege('authenticated', 'cuidared_api.api_reporte_opciones(bigint,text)', 'EXECUTE')
     and not has_function_privilege('anon', 'cuidared_api.api_reporte(bigint,text,jsonb)', 'EXECUTE')
     and not has_function_privilege('anon', 'cuidared_api.api_registrar_exportacion_reporte(bigint,jsonb)', 'EXECUTE')
     and not has_function_privilege('anon', 'cuidared_api.api_exportar_reporte_csv(bigint,text,jsonb)', 'EXECUTE')
     and not has_function_privilege('anon', 'cuidared_api.api_informe_medico(bigint,uuid)', 'EXECUTE')
+    and not has_function_privilege('anon', 'cuidared_api.api_reporte_opciones(bigint,text)', 'EXECUTE')
     and not has_function_privilege('anon', 'cuidared_api.api_auditoria_cuenta(bigint,integer,bigint,boolean)', 'EXECUTE'),
     'RPC de reportes solo para authenticated');
   perform pruebas.afirmar(not exists (

@@ -26,6 +26,14 @@ const negocio =
 const manejadores = () => ({
   api_resumen_casos_listar: () => clonar(salidas.resumen),
   api_resumen_casos_indicadores: () => clonar(salidas.indicadores),
+  api_reporte_opciones: ({ p_ambito }) => ({
+    municipios: [{ codigo: '0101', nombre: 'Distrito Nacional' }],
+    sectores: ['Sector 101'],
+    asignados:
+      p_ambito === 'resumen'
+        ? [{ usuario_id: usuarioId, nombres: 'Ana', apellidos: 'Pérez', rol: 'cuidador' }]
+        : [],
+  }),
   api_reporte: ({ p_tipo }) => clonar(salidas[p_tipo]),
   api_reporte_avanzado: () => clonar(salidas.avanzado),
   api_exportar_reporte_csv: ({ p_tipo }) => ({
@@ -65,6 +73,31 @@ const binario = (res, callback) => {
 };
 const csvDe = (aplicacion, ruta) =>
   conSesion(request(aplicacion).get(ruta)).buffer(true).parse(binario);
+
+describe('opciones de filtros de la fase 7', () => {
+  it.each([
+    ['resumen-casos', 'resumen'],
+    ['reportes', 'reportes'],
+  ])('consulta el ámbito de %s sin paginación', async (ruta, ambito) => {
+    const { app: aplicacion, rpc } = app();
+    const res = await llamar(aplicacion, ['get', `${prefijo}/${ruta}/opciones`]).expect(200);
+    expect(res.headers['cache-control']).toBe('no-store');
+    expect(res.body.data.sectores).toEqual(['Sector 101']);
+    expect(res.body.data.asignados).toHaveLength(ambito === 'resumen' ? 1 : 0);
+    expect(rpc).toHaveBeenCalledWith('api_reporte_opciones', {
+      p_cuenta_id: '7',
+      p_ambito: ambito,
+    });
+  });
+
+  it('permite opciones de resumen sin plan de métricas y protege las de reportes', async () => {
+    const { app: aplicacion, rpc } = app('coordinador', 'familia', []);
+    await llamar(aplicacion, ['get', `${prefijo}/resumen-casos/opciones`]).expect(200);
+    await llamar(aplicacion, ['get', `${prefijo}/reportes/opciones`]).expect(403);
+    await llamar(aplicacion, ['get', `${prefijo}/resumen-casos/opciones?page=1`]).expect(422);
+    expect(rpc.mock.calls.filter(([nombre]) => nombre === 'api_reporte_opciones')).toHaveLength(1);
+  });
+});
 
 describe('fase 7 · resumen de casos (RF-07)', () => {
   it('pagina con el orden predeterminado y proyecta solo los campos del contrato', async () => {
@@ -409,10 +442,10 @@ describe('fase 7 · exportaciones', () => {
     expect(lineas).toContain('visitas_realizadas,2');
     expect(lineas).toContain('Clave,Etiqueta,Valor,Porcentaje');
     expect(lineas).toContain(
-      'Fecha,Hora inicio,Hora fin,Razón,Origen,Responsables,Adultos atendidos,Estados observados',
+      'Fecha,Hora inicio,Hora fin,Razón,Origen,Tipo de visita,Responsables,Adultos atendidos,Estados observados',
     );
     expect(lineas).toContain(
-      '2026-11-19,09:00,09:30,Ronda,interna,Laura Mejía,Rosa Arias | Lucía Castro,estable | sin_registro',
+      '2026-11-19,09:00,09:30,Ronda,interna,Con expediente,Laura Mejía,Rosa Arias | Lucía Castro,estable | sin_registro',
     );
     expect(rpc).toHaveBeenCalledWith('api_exportar_reporte_csv', {
       p_cuenta_id: '7',

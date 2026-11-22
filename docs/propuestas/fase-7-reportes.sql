@@ -71,11 +71,34 @@ begin
 end;
 $$;
 
--- Umbral efectivo de días sin visita (RF-05), con la misma regla que el motor de alertas.
-create or replace function cuidared_interno.reporte_umbral(p_cuenta_id bigint) returns integer
+-- El seguimiento por visitas solo aplica a Organización. Las dos consultas reutilizan el mismo umbral.
+create or replace function cuidared_interno.umbral_seguimiento_visitas(p_cuenta_id bigint) returns integer
 language sql stable set search_path = '' as $$
   select case when cuidared_interno.valor_parametro_valido('entero', x.valor) then x.valor::integer else 15 end
-  from (select cuidared_interno.alerta_parametro(p_cuenta_id, 'dias_sin_visita_alerta') as valor) x
+  from cuidared.cuenta c join cuidared.tipo_cuenta t using (tipo_cuenta_id)
+  cross join lateral (select cuidared_interno.alerta_parametro(c.cuenta_id, 'dias_sin_visita_alerta') as valor) x
+  where c.cuenta_id = p_cuenta_id and t.codigo = 'organizacion'
+$$;
+
+-- La reconciliación existente cierra las alertas de sistema cuya fuente deja de estar vigente y conserva su historial.
+create or replace function cuidared_interno.alerta_ventana_sin_visita(p_adulto uuid, p_cuenta bigint, p_hoy date)
+returns table (visita_id uuid, referencia date, dias integer, umbral integer)
+language sql stable set search_path = '' as $$
+  with ultima_visita as (
+    select v.visita_id, v.fecha
+    from cuidared.detalle_visita d join cuidared.visita v using (visita_id)
+    where d.envejeciente_id = p_adulto and v.cuenta_id = p_cuenta and v.estado = 'completada'
+      and v.fecha <= p_hoy
+    order by v.fecha desc, coalesce(v.hora_fin, v.hora_inicio) desc nulls last,
+      v.fecha_creacion desc, v.visita_id
+    limit 1
+  ), configuracion as (
+    select cuidared_interno.umbral_seguimiento_visitas(p_cuenta) as umbral
+  )
+  select u.visita_id, coalesce(u.fecha,(e.fecha_creacion at time zone 'America/Santo_Domingo')::date),
+    p_hoy - coalesce(u.fecha,(e.fecha_creacion at time zone 'America/Santo_Domingo')::date), c.umbral
+  from cuidared.envejeciente e cross join configuracion c left join ultima_visita u on true
+  where e.envejeciente_id = p_adulto and e.cuenta_id = p_cuenta and c.umbral is not null
 $$;
 
 -- Meses `YYYY-MM` de un periodo, también los vacíos; como máximo los 24 últimos.
@@ -155,6 +178,46 @@ language sql stable set search_path = '' as $$
   order by er.envejeciente_id, nr.orden desc
 $$;
 
+-- Opciones de filtro distintas del universo autorizado. No dependen de la página, del orden ni del tope del detalle.
+create or replace function cuidared_api.api_reporte_opciones(p_cuenta_id bigint, p_ambito text)
+returns jsonb language plpgsql stable security definer set search_path = '' as $$
+declare
+  v_uid uuid;
+  v_resumen boolean := p_ambito = 'resumen';
+  v_opciones jsonb;
+begin
+  if p_ambito is null or p_ambito not in ('resumen', 'reportes') then raise invalid_parameter_value; end if;
+  v_uid := (cuidared_interno.exigir(p_cuenta_id,
+    case when v_resumen then 'resumen:ver' else 'reportes:ver' end)->>'usuario_id')::uuid;
+  if not v_resumen then
+    perform cuidared_interno.reporte_exigir_extra(p_cuenta_id, v_uid, array[]::text[], array['dashboard_metricas']);
+  end if;
+  with alcance as materialized (
+    select e.envejeciente_id, e.municipio_cod, e.zona::text as zona
+    from cuidared_interno.reporte_alcance(p_cuenta_id, v_uid) a
+    join cuidared.envejeciente e using (envejeciente_id)
+    where not v_resumen or e.estado = 'activo'
+  ), municipios as (
+    select distinct m.municipio_cod as codigo, m.nombre
+    from alcance a join cuidared.municipio m on m.municipio_cod = a.municipio_cod
+  ), sectores as (
+    select distinct a.zona from alcance a where nullif(btrim(a.zona), '') is not null
+  ), asignados as (
+    select distinct p.usuario_id, p.nombres, p.apellidos,
+      case p.tipo when 'cuidador_asignado' then 'cuidador' else 'voluntario' end as rol
+    from cuidared_interno.reporte_asignaciones(p_cuenta_id) p
+    join alcance a using (envejeciente_id)
+    where v_resumen
+  )
+  select jsonb_build_object(
+    'municipios', coalesce((select jsonb_agg(m order by m.nombre, m.codigo) from municipios m), '[]'::jsonb),
+    'sectores', coalesce((select jsonb_agg(s.zona order by s.zona) from sectores s), '[]'::jsonb),
+    'asignados', coalesce((select jsonb_agg(a order by a.apellidos, a.nombres, a.usuario_id) from asignados a), '[]'::jsonb))
+  into v_opciones;
+  return v_opciones;
+end;
+$$;
+
 /* ───────────── 2. Resumen de casos (RF-07) ───────────── */
 
 -- Un caso por adulto activo, con consentimiento vigente y al alcance del actor, calculado con la fecha de hoy.
@@ -172,7 +235,7 @@ returns table (
   prioridad text, peso_prioridad integer, estado_atencion text, peso_estado integer, motivos text[])
 language sql stable set search_path = '' as $$
   with parametros as (
-    select cuidared_interno.hoy() as hoy, cuidared_interno.reporte_umbral(p_cuenta_id) as umbral
+    select cuidared_interno.hoy() as hoy, cuidared_interno.umbral_seguimiento_visitas(p_cuenta_id) as umbral
   ), adultos as materialized (
     select e.* from cuidared.envejeciente e
     join cuidared_interno.reporte_alcance(p_cuenta_id, p_usuario_id) s on s.envejeciente_id = e.envejeciente_id
@@ -193,7 +256,8 @@ language sql stable set search_path = '' as $$
       from cuidared.alerta_envejeciente ae
       join cuidared.envejeciente e on e.envejeciente_id = ae.envejeciente_id and e.cuenta_id = p_cuenta_id
       join cuidared.tipo_alerta t on t.tipo_alerta_id = ae.tipo_alerta_id
-      where ae.estado in ('pendiente', 'en_proceso')
+      cross join parametros p
+      where ae.estado in ('pendiente', 'en_proceso') and (p.umbral is not null or t.codigo <> 'ausencia_visitas')
     ) x
     group by x.envejeciente_id
   ), necesidades as (
@@ -208,7 +272,7 @@ language sql stable set search_path = '' as $$
     from cuidared.visita v
     join cuidared.detalle_visita d on d.visita_id = v.visita_id
     cross join parametros p
-    where v.cuenta_id = p_cuenta_id and v.estado = 'completada' and v.fecha <= p.hoy
+    where p.umbral is not null and v.cuenta_id = p_cuenta_id and v.estado = 'completada' and v.fecha <= p.hoy
     order by d.envejeciente_id, v.fecha desc, coalesce(v.hora_fin, v.hora_inicio) desc nulls last,
       v.fecha_creacion desc, v.visita_id
   ), asignados as (
@@ -230,7 +294,8 @@ language sql stable set search_path = '' as $$
       coalesce(al.en_proceso, 0) as en_proceso, coalesce(al.prioritarias, 0) as prioritarias,
       coalesce(al.seguimiento, 0) as seguimiento, coalesce(al.otras, 0) as otras,
       coalesce(ne.activas, 0) as activas, uv.visita_id, uv.fecha as ultima_fecha,
-      coalesce(uv.fecha, (a.fecha_creacion at time zone 'America/Santo_Domingo')::date) as referencia,
+      case when p.umbral is not null
+        then coalesce(uv.fecha, (a.fecha_creacion at time zone 'America/Santo_Domingo')::date) end as referencia,
       p.hoy, p.umbral, coalesce(asg.cuidadores, '[]'::jsonb) as cuidadores,
       coalesce(asg.voluntarios, '[]'::jsonb) as voluntarios, coalesce(asg.ids, array[]::uuid[]) as ids
     from adultos a
@@ -261,7 +326,7 @@ language sql stable set search_path = '' as $$
       case when b.riesgo is null then 'sin_evaluacion_vigente' end,
       case when cardinality(b.ids) = 0 then 'sin_personal_asignado' end], null)
   from base b
-  cross join lateral (select (b.hoy - b.referencia) > b.umbral as vencido) s
+  cross join lateral (select coalesce((b.hoy - b.referencia) > b.umbral, false) as vencido) s
   cross join lateral (
     select case
       when b.prioritarias > 0 or b.riesgo = 'alto' then 'alta'
@@ -386,9 +451,9 @@ begin
         'alertas', jsonb_build_object('abiertas', p.alertas_abiertas, 'pendientes', p.alertas_pendientes,
           'en_proceso', p.alertas_en_proceso, 'prioritarias_abiertas', p.alertas_prioritarias_abiertas),
         'necesidades_activas', p.necesidades_activas,
-        'seguimiento', jsonb_build_object('ultima_visita_id', p.ultima_visita_id,
+        'seguimiento', case when p.umbral_dias is not null then jsonb_build_object('ultima_visita_id', p.ultima_visita_id,
           'ultima_visita_fecha', p.ultima_visita_fecha, 'fecha_referencia', p.fecha_referencia,
-          'dias_sin_visita', p.dias_sin_visita, 'umbral_dias', p.umbral_dias, 'vencido', p.seguimiento_vencido),
+          'dias_sin_visita', p.dias_sin_visita, 'umbral_dias', p.umbral_dias, 'vencido', p.seguimiento_vencido) end,
         'asignados', jsonb_build_object('total', cardinality(p.asignados),
           'cuidadores', p.cuidadores, 'voluntarios', p.voluntarios)
       ) order by p.posicion), '[]'::jsonb))
@@ -410,7 +475,7 @@ begin
   with c as materialized (select * from cuidared_interno.reporte_casos(p_cuenta_id, v_uid))
   select jsonb_build_object(
     'fecha_calculo', cuidared_interno.hoy(),
-    'umbral_dias_sin_visita', cuidared_interno.reporte_umbral(p_cuenta_id),
+    'umbral_dias_sin_visita', cuidared_interno.umbral_seguimiento_visitas(p_cuenta_id),
     'casos_activos', count(*),
     'por_prioridad', jsonb_build_object(
       'alta', count(*) filter (where c.prioridad = 'alta'),
@@ -537,6 +602,20 @@ begin
 end;
 $$;
 
+-- Una actividad institucional sin expediente solo puede coincidir con filtros de la visita, como el período.
+create or replace function cuidared_interno.reporte_visitas_institucionales(p_cuenta_id bigint, p_f jsonb)
+returns table (visita_id uuid, fecha date)
+language sql stable set search_path = '' as $$
+  select v.visita_id, v.fecha
+  from cuidared.visita v
+  join cuidared.solicitud_visita s on s.solicitud_visita_id = v.solicitud_visita_id and s.cuenta_id = v.cuenta_id
+  where v.cuenta_id = p_cuenta_id and v.estado = 'completada' and s.tipo_visita = 'institucional'
+    and p_f->>'municipio_cod' is null and p_f->>'zona' is null and p_f->>'riesgo' is null
+    and (p_f->>'desde' is null or v.fecha >= (p_f->>'desde')::date)
+    and (p_f->>'hasta' is null or v.fecha <= (p_f->>'hasta')::date)
+    and not exists (select 1 from cuidared.detalle_visita d where d.visita_id = v.visita_id)
+$$;
+
 create or replace function cuidared_interno.reporte_visitas(p_cuenta_id bigint, p_usuario_id uuid, p_f jsonb,
   p_hoy date) returns jsonb
 language plpgsql stable set search_path = '' as $$
@@ -556,13 +635,17 @@ begin
   ), atenciones as materialized (
     select ac.visita_id, ac.fecha, ac.envejeciente_id, ac.estado_general, pob.nombres, pob.apellidos
     from atenciones_cuenta ac join pob on pob.envejeciente_id = ac.envejeciente_id
+  ), visitas_incluidas as (
+    select distinct a.visita_id, 'personal'::text as tipo_visita from atenciones a
+    union all
+    select i.visita_id, 'institucional' from cuidared_interno.reporte_visitas_institucionales(p_cuenta_id, p_f) i
   ), visitas as materialized (
     -- adultos_total cuenta todos los adultos registrados en la visita, también los que quedan fuera del filtro.
     select v.visita_id, v.fecha, v.hora_inicio, v.hora_fin, v.razon::text as razon, v.origen::text as origen,
-      v.fecha_creacion, t.adultos_total
-    from (select distinct a.visita_id from atenciones a) ids
+      v.fecha_creacion, ids.tipo_visita, coalesce(t.adultos_total, 0) as adultos_total
+    from visitas_incluidas ids
     join cuidared.visita v on v.visita_id = ids.visita_id
-    join (select ac.visita_id, count(*) as adultos_total from atenciones_cuenta ac group by ac.visita_id) t
+    left join (select ac.visita_id, count(*) as adultos_total from atenciones_cuenta ac group by ac.visita_id) t
       on t.visita_id = v.visita_id
   ), pagina as materialized (
     select * from visitas
@@ -586,6 +669,8 @@ begin
     'vacio', (select count(*) from visitas) = 0,
     'indicadores', jsonb_build_object(
       'visitas_realizadas', (select count(*) from visitas),
+      'visitas_personales', (select count(*) from visitas where tipo_visita = 'personal'),
+      'visitas_institucionales', (select count(*) from visitas where tipo_visita = 'institucional'),
       'atenciones', (select count(*) from atenciones),
       'adultos_visitados', (select count(distinct a.envejeciente_id) from atenciones a),
       'adultos_activos', (select count(*) from pob where pob.estado = 'activo'),
@@ -597,6 +682,11 @@ begin
       'visitas_compartidas', (select count(*) from visitas where visitas.adultos_total > 1)),
     'series', jsonb_build_object(
       'por_mes', cuidared_interno.reporte_por_mes((select array_agg(visitas.fecha) from visitas), p_f, p_hoy),
+      'por_tipo_visita', cuidared_interno.reporte_serie((
+        select jsonb_agg(jsonb_build_object('clave', s.clave, 'etiqueta', s.etiqueta,
+          'valor', (select count(*) from visitas where tipo_visita = s.clave)) order by s.orden)
+        from (values ('personal', 'Con expediente', 1), ('institucional', 'Institucional sin expediente', 2))
+          s(clave, etiqueta, orden))),
       'por_estado_general', cuidared_interno.reporte_serie((
         select jsonb_agg(jsonb_build_object('clave', s.clave, 'etiqueta', s.etiqueta, 'valor',
           (select count(*) from atenciones a where coalesce(a.estado_general, 'sin_registro') = s.clave))
@@ -607,11 +697,11 @@ begin
     'detalle', (
       select coalesce(jsonb_agg(jsonb_build_object(
         'visita_id', d.visita_id, 'fecha', d.fecha, 'hora_inicio', to_char(d.hora_inicio, 'HH24:MI'),
-        'hora_fin', to_char(d.hora_fin, 'HH24:MI'), 'razon', d.razon, 'origen', d.origen,
-        'responsables', coalesce(r.responsables, '[]'::jsonb), 'adultos', av.adultos)
+        'hora_fin', to_char(d.hora_fin, 'HH24:MI'), 'razon', d.razon, 'origen', d.origen, 'tipo_visita', d.tipo_visita,
+        'responsables', coalesce(r.responsables, '[]'::jsonb), 'adultos', coalesce(av.adultos, '[]'::jsonb))
         order by d.fecha desc, d.hora_inicio desc nulls last, d.fecha_creacion desc, d.visita_id), '[]'::jsonb)
       from pagina d
-      join adultos_visita av on av.visita_id = d.visita_id
+      left join adultos_visita av on av.visita_id = d.visita_id
       left join responsables r on r.visita_id = d.visita_id),
     'detalle_total', (select count(*) from visitas),
     'detalle_truncado', (select count(*) from visitas) > 5000)
@@ -920,6 +1010,10 @@ begin
     -- Un hecho por registro con su día local: visita (distinta), necesidad, alerta prioritaria y alta.
     select 'visita' as clase, x.fecha as dia from (select distinct vp.visita_id, vp.fecha from visitas_pob vp) x
     union all
+    select 'visita', i.fecha
+    from cuidared_interno.reporte_visitas_institucionales(p_cuenta_id, p_f - array['desde', 'hasta']) i
+    where v_visitas
+    union all
     select 'necesidad', (en.fecha_necesidad at time zone 'America/Santo_Domingo')::date
     from pob join cuidared.envejeciente_necesidad en on en.envejeciente_id = pob.envejeciente_id
     union all
@@ -942,7 +1036,7 @@ begin
     select c.*, lag(c.visitas_realizadas) over (order by c.inicio) as previas from conteos c
   )
   select jsonb_build_object(
-    'vacio', (select count(*) from pob) = 0,
+    'vacio', not exists (select from pob) and not exists (select from conteos c where c.visitas_realizadas > 0),
     'comparativo_zonas', (
       select coalesce(jsonb_agg(jsonb_build_object(
         'municipio', jsonb_build_object('codigo', z.municipio_cod, 'nombre', z.municipio_nombre), 'zona', z.zona,
@@ -1153,8 +1247,10 @@ begin
           from cuidared.usuario u where u.usuario_id = i.registrado_por
             and exists (select 1 from cuidared.membresia m where m.cuenta_id = p_cuenta_id and m.usuario_id = u.usuario_id)))
         order by i.fecha_inicio desc, i.fecha_creacion desc, i.indicacion_medica_id)
-        filter (where i.estado = 'activa' and (i.fecha_fin is null or i.fecha_fin >= v_hoy)), '[]'::jsonb),
-      'no_vigentes', count(*) filter (where not (i.estado = 'activa' and (i.fecha_fin is null or i.fecha_fin >= v_hoy))))
+        filter (where i.estado = 'activa' and i.fecha_inicio <= v_hoy
+          and (i.fecha_fin is null or i.fecha_fin >= v_hoy)), '[]'::jsonb),
+      'no_vigentes', count(*) filter (where not (i.estado = 'activa' and i.fecha_inicio <= v_hoy
+        and (i.fecha_fin is null or i.fecha_fin >= v_hoy))))
     into v_indicacion
     from cuidared.indicacion_medica i
     join cuidared.tipo_indicacion ti on ti.tipo_indicacion_id = i.tipo_indicacion_id
@@ -1286,7 +1382,8 @@ $$;
 revoke all on function cuidared_interno.reporte_exigir_extra(bigint, uuid, text[], text[]) from public, anon, authenticated;
 revoke all on function cuidared_interno.reporte_codigo(jsonb, text[]) from public, anon, authenticated;
 revoke all on function cuidared_interno.reporte_filtros(jsonb, text[]) from public, anon, authenticated;
-revoke all on function cuidared_interno.reporte_umbral(bigint) from public, anon, authenticated;
+revoke all on function cuidared_interno.umbral_seguimiento_visitas(bigint) from public, anon, authenticated;
+revoke all on function cuidared_interno.alerta_ventana_sin_visita(uuid, bigint, date) from public, anon, authenticated;
 revoke all on function cuidared_interno.reporte_meses(date, date, date, date) from public, anon, authenticated;
 revoke all on function cuidared_interno.reporte_serie(jsonb) from public, anon, authenticated;
 revoke all on function cuidared_interno.reporte_asignaciones(bigint) from public, anon, authenticated;
@@ -1298,6 +1395,7 @@ revoke all on function cuidared_interno.reporte_poblacion(bigint, uuid, jsonb) f
 revoke all on function cuidared_interno.reporte_por_mes(date[], jsonb, date) from public, anon, authenticated;
 revoke all on function cuidared_interno.reporte_adultos(bigint, uuid, jsonb, date) from public, anon, authenticated;
 revoke all on function cuidared_interno.reporte_visitas(bigint, uuid, jsonb, date) from public, anon, authenticated;
+revoke all on function cuidared_interno.reporte_visitas_institucionales(bigint, jsonb) from public, anon, authenticated;
 revoke all on function cuidared_interno.reporte_necesidades(bigint, uuid, jsonb, date) from public, anon, authenticated;
 revoke all on function cuidared_interno.reporte_casos_prioritarios(bigint, uuid, jsonb, date)
   from public, anon, authenticated;
@@ -1310,6 +1408,7 @@ revoke all on function cuidared_interno.reporte_registrar_exportacion(bigint, uu
 
 revoke all on function cuidared_api.api_resumen_casos_listar(bigint, jsonb, text[], integer, bigint) from public, anon;
 revoke all on function cuidared_api.api_resumen_casos_indicadores(bigint) from public, anon;
+revoke all on function cuidared_api.api_reporte_opciones(bigint, text) from public, anon;
 revoke all on function cuidared_api.api_reporte(bigint, text, jsonb) from public, anon;
 revoke all on function cuidared_api.api_reporte_avanzado(bigint, jsonb) from public, anon;
 revoke all on function cuidared_api.api_exportar_reporte_csv(bigint, text, jsonb) from public, anon;
@@ -1318,6 +1417,7 @@ revoke all on function cuidared_api.api_informe_medico(bigint, uuid) from public
 revoke all on function cuidared_api.api_auditoria_cuenta(bigint, integer, bigint, boolean) from public, anon;
 grant execute on function cuidared_api.api_resumen_casos_listar(bigint, jsonb, text[], integer, bigint) to authenticated;
 grant execute on function cuidared_api.api_resumen_casos_indicadores(bigint) to authenticated;
+grant execute on function cuidared_api.api_reporte_opciones(bigint, text) to authenticated;
 grant execute on function cuidared_api.api_reporte(bigint, text, jsonb) to authenticated;
 grant execute on function cuidared_api.api_reporte_avanzado(bigint, jsonb) to authenticated;
 grant execute on function cuidared_api.api_exportar_reporte_csv(bigint, text, jsonb) to authenticated;

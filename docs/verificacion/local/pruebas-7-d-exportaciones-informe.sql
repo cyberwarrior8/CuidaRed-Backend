@@ -60,10 +60,12 @@ begin
   insert into cuidared.envejeciente_riesgo(envejeciente_id, riesgo_id, nivel_riesgo_id, motivo, fecha_riesgo)
     select x, r.riesgo_id, n.nivel_riesgo_id, 'Caída reciente', now() - interval '1 day'
     from cuidared.riesgo r, cuidared.nivel_riesgo n where r.codigo = 'riesgo_caida' and n.codigo = 'alto';
-  -- Indicaciones: una vigente, una activa vencida ayer y una suspendida.
+  -- El inicio y el fin son inclusivos. Las futuras, vencidas y suspendidas quedan fuera.
   insert into cuidared.indicacion_medica(envejeciente_id, tipo_indicacion_id, titulo, descripcion, frecuencia_horario,
       fecha_inicio, fecha_fin, estado, registrado_por) values
     (x, 1, 'Losartán 50 mg', 'Una tableta en la mañana.', 'Diaria, 8:00', v_hoy - 10, null, 'activa', v_coord),
+    (x, 2, 'Consulta de hoy', null, null, v_hoy, v_hoy, 'activa', v_coord),
+    (x, 2, 'Consulta futura', null, null, v_hoy + 7, null, 'activa', v_coord),
     (x, 1, 'Antibiótico', 'Cada 8 horas.', 'Cada 8 horas', v_hoy - 40, v_hoy - 1, 'activa', v_coord),
     (x, 2, 'Fisioterapia', 'Ejercicios de movilidad.', 'Semanal', v_hoy - 20, null, 'suspendida', v_coord);
   -- Doce visitas completadas de x, una de y y una programada de x.
@@ -152,9 +154,10 @@ begin
     and jsonb_array_length(v_r->'riesgo'->'historial') = 15 and (v_r->'riesgo'->>'historial_total')::int = 17
     and v_r->'riesgo'->'historial'->0->>'estado' = 'activo' and v_r->'riesgo'->'historial'->14->>'motivo' = 'Histórico 14',
     'riesgo vigente e historial de 15 de 17, del más reciente al más antiguo');
-  perform pruebas.afirmar(jsonb_array_length(v_r->'indicaciones'->'vigentes') = 1
-    and (v_r->'indicaciones'->>'no_vigentes')::int = 2
-    and v_r->'indicaciones'->'vigentes'->0 @> '{"titulo":"Losartán 50 mg","fecha_fin":null,
+  perform pruebas.afirmar(jsonb_array_length(v_r->'indicaciones'->'vigentes') = 2
+    and (v_r->'indicaciones'->>'no_vigentes')::int = 3
+    and v_r->'indicaciones'->'vigentes'->0->>'titulo' = 'Consulta de hoy'
+    and v_r->'indicaciones'->'vigentes'->1 @> '{"titulo":"Losartán 50 mg","fecha_fin":null,
       "tipo":{"tipo_indicacion_id":1},"registrada_por":{"nombres":"Laura","apellidos":"Mejía"}}'::jsonb,
     'solo indicaciones activas y no vencidas');
   perform pruebas.afirmar((v_r->'visitas'->>'realizadas_total')::int = 12 and jsonb_array_length(v_r->'visitas'->'recientes') = 10
@@ -214,7 +217,7 @@ begin
   perform pruebas.como(v_k1);
   v_r := cuidared_api.api_informe_medico(v_cuenta, x);
   perform pruebas.afirmar(v_r->'secciones_omitidas' = '["riesgo"]'::jsonb and v_r->'riesgo' = 'null'::jsonb
-    and jsonb_array_length(v_r->'indicaciones'->'vigentes') = 1
+    and jsonb_array_length(v_r->'indicaciones'->'vigentes') = 2
     and v_r->'visitas'->'recientes'->0->'observacion' = 'null'::jsonb
     and v_r->'visitas'->'recientes'->0->'estado_general' = 'null'::jsonb
     and v_r->'visitas'->'recientes'->0->>'fecha' = (v_hoy - 1)::text,

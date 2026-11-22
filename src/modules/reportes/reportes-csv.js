@@ -43,6 +43,11 @@ const COLUMNAS = {
     ['Hora fin', (f) => f.hora_fin],
     ['Razón', (f) => f.razon],
     ['Origen', (f) => f.origen],
+    [
+      'Tipo de visita',
+      (f) =>
+        f.tipo_visita === 'institucional' ? 'Institucional sin expediente' : 'Con expediente',
+    ],
     ['Responsables', (f) => lista(f.responsables.map(nombre))],
     ['Adultos atendidos', (f) => lista(f.adultos.map(nombre))],
     ['Estados observados', (f) => lista(f.adultos.map((a) => a.estado_general ?? 'sin_registro'))],

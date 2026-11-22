@@ -174,6 +174,15 @@ export const salidas = {
         { clave: '2026-10', valor: 0, etiqueta: '2026-10', porcentaje: 0 },
         { clave: '2026-11', valor: 2, etiqueta: '2026-11', porcentaje: 100 },
       ],
+      por_tipo_visita: [
+        { clave: 'personal', etiqueta: 'Con expediente', valor: 2, porcentaje: 100 },
+        {
+          clave: 'institucional',
+          etiqueta: 'Institucional sin expediente',
+          valor: 0,
+          porcentaje: 0,
+        },
+      ],
       por_estado_general: [
         { clave: 'estable', valor: 2, etiqueta: 'Estable', porcentaje: 50 },
         { clave: 'requiere_atencion', valor: 0, etiqueta: 'Requiere atención', porcentaje: 0 },
@@ -186,6 +195,7 @@ export const salidas = {
         fecha: '2026-11-19',
         razon: 'Ronda',
         origen: 'interna',
+        tipo_visita: 'personal',
         adultos: [
           {
             nombres: 'Rosa',
@@ -215,6 +225,7 @@ export const salidas = {
         fecha: '2026-11-18',
         razon: 'Ronda',
         origen: 'interna',
+        tipo_visita: 'personal',
         adultos: [
           {
             nombres: 'Rosa',
@@ -256,6 +267,8 @@ export const salidas = {
       adultos_activos: 2,
       adultos_visitados: 2,
       visitas_realizadas: 2,
+      visitas_personales: 2,
+      visitas_institucionales: 0,
       promedio_por_adulto: 2.0,
       visitas_compartidas: 2,
       requirieron_atencion: 0,
@@ -727,6 +740,15 @@ export const salidas = {
       vacio: false,
       series: {
         por_mes: [{ clave: '2026-11', valor: 2, etiqueta: '2026-11', porcentaje: 100 }],
+        por_tipo_visita: [
+          { clave: 'personal', etiqueta: 'Con expediente', valor: 2, porcentaje: 100 },
+          {
+            clave: 'institucional',
+            etiqueta: 'Institucional sin expediente',
+            valor: 0,
+            porcentaje: 0,
+          },
+        ],
         por_estado_general: [
           { clave: 'estable', valor: 2, etiqueta: 'Estable', porcentaje: 50 },
           { clave: 'requiere_atencion', valor: 0, etiqueta: 'Requiere atención', porcentaje: 0 },
@@ -739,6 +761,7 @@ export const salidas = {
           fecha: '2026-11-19',
           razon: 'Ronda',
           origen: 'interna',
+          tipo_visita: 'personal',
           adultos: [
             {
               nombres: 'Rosa',
@@ -768,6 +791,7 @@ export const salidas = {
           fecha: '2026-11-18',
           razon: 'Ronda',
           origen: 'interna',
+          tipo_visita: 'personal',
           adultos: [
             {
               nombres: 'Rosa',
@@ -809,6 +833,8 @@ export const salidas = {
         adultos_activos: 2,
         adultos_visitados: 2,
         visitas_realizadas: 2,
+        visitas_personales: 2,
+        visitas_institucionales: 0,
         promedio_por_adulto: 2.0,
         visitas_compartidas: 2,
         requirieron_atencion: 0,

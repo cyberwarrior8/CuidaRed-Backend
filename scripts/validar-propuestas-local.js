@@ -11,7 +11,7 @@
  *   6. docs/verificacion/local/pruebas-*.sql      (cada una dentro de una transacción con ROLLBACK)
  * y borra la base al final (salvo --conservar). NUNCA apunta al proyecto Supabase: se niega si PGHOST no es local.
  * --solo=reportes (fase 7) carga TODAS las migraciones aplicadas, salvo las dos que solo programan Supabase Cron,
- * con los metadatos simulados que necesitan; después, docs/propuestas/fase-7-*.sql y las pruebas pruebas-7-*.sql.
+ * con los metadatos simulados que necesitan; después, las propuestas pendientes de fase 7 y pruebas-7-*.sql.
  */
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -46,8 +46,10 @@ const migracionVisitas = (nombre) =>
   /^\d{14}_(?:visitas_(?:seguimiento_organizacional|institucionales)|solicitudes_visita_reintentos)\.sql$/.test(
     nombre,
   );
+const migracionReportes = (nombre) => /^\d{14}_fase_7_reportes_cuidared_012\.sql$/.test(nombre);
 const esMigracionPosterior = (nombre) =>
   migracionVisitas(nombre) ||
+  migracionReportes(nombre) ||
   /^\d{14}_(?:backoffice(?:_tareas|_alertas_compatibilidad|_prueba_siete_dias)?|(?:fases_5_y_6|cron_alertas)_cuidared_009|web_push_cuidared_010|alertas_necesidades_prioritarias_cuidared_011)\.sql$/.test(
     nombre,
   );
@@ -159,7 +161,7 @@ try {
   }
   for (const f of ordenados(join(raiz, 'docs/propuestas'), (n) =>
     soloReportes
-      ? /^fase-7[a-z]?-.*\.sql$/.test(n)
+      ? /^fase-7[a-z]?-.*\.sql$/.test(n) && n !== 'fase-7-reportes.sql'
       : baseDeAlertas
         ? /^fase-[56][a-z]?-.*\.sql$/.test(n)
         : /^fase-(2[abc]|3[ab]|4[abcd])-.*\.sql$/.test(n) && incluido(n.slice(5)),

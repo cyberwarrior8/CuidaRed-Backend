@@ -6,6 +6,7 @@ import {
   indicadoresDto,
   informeDto,
   leerSalida,
+  opcionesReporteDto,
   reporteDto,
   resumenPagina,
 } from './reportes-schemas.js';
@@ -31,6 +32,13 @@ export function createReportesRepository(rpc) {
     async indicadores(cuentaId) {
       const raw = await rpc('api_resumen_casos_indicadores', { p_cuenta_id: cuentaId });
       return leerSalida(indicadoresDto, raw);
+    },
+    async opciones(cuentaId, ambito) {
+      const raw = await rpc('api_reporte_opciones', {
+        p_cuenta_id: cuentaId,
+        p_ambito: ambito,
+      });
+      return leerSalida(opcionesReporteDto, raw);
     },
     async reporte(cuentaId, tipo, filtros) {
       const raw = await rpc('api_reporte', {
