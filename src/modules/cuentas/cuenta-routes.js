@@ -21,7 +21,8 @@ const queryAuditoria = createCollectionQuery({
 const eventoAuditoria = z.object({
   auditoria_id: z.string(),
   actor: z.string().nullable(),
-  accion: z.enum(['alta', 'actualizacion', 'baja']),
+  // `exportacion`: exportaciones de reportes e informes médicos (fase 7); las demás entidades no cambian.
+  accion: z.enum(['alta', 'actualizacion', 'baja', 'exportacion']),
   entidad: z.string(),
   fecha: z.iso.datetime({ offset: true }),
   resultado: z.literal('confirmado'),

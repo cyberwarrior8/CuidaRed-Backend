@@ -1,6 +1,6 @@
 /* Valida las propuestas SQL en un PostgreSQL LOCAL desechable · herramientas. © 2026 Equipo CuidaRed – INTEC. */
 /*
- * Uso: node scripts/validar-propuestas-local.js [--conservar] [--solo=2b,3a|--solo=integracion|--solo=cierre|--solo=fases-5-6|--solo=web-push|--solo=visitas]
+ * Uso: node scripts/validar-propuestas-local.js [--conservar] [--solo=2b,3a|--solo=integracion|--solo=cierre|--solo=fases-5-6|--solo=web-push|--solo=visitas|--solo=reportes]
  * Requiere `psql` en el PATH y un PostgreSQL local accesible con las variables estándar (PGHOST, PGUSER,
  * PGPASSWORD…; por defecto localhost/postgres). Crea la base `cuidared_validacion_local`, carga en orden:
  *   1. docs/verificacion/local/supabase-stub.sql  (esquema auth y roles simulados)
@@ -10,6 +10,8 @@
  *   5. docs/propuestas/fase-2a-* a fase-4d-*      (bloques de esquema, sin la carga territorial), en orden
  *   6. docs/verificacion/local/pruebas-*.sql      (cada una dentro de una transacción con ROLLBACK)
  * y borra la base al final (salvo --conservar). NUNCA apunta al proyecto Supabase: se niega si PGHOST no es local.
+ * --solo=reportes (fase 7) carga TODAS las migraciones aplicadas, salvo las dos que solo programan Supabase Cron,
+ * con los metadatos simulados que necesitan; después, las propuestas pendientes de fase 7 y pruebas-7-*.sql.
  */
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -32,7 +34,8 @@ const soloCierre = soloArg === '--solo=cierre';
 const fasesCincoSeis = soloArg === '--solo=fases-5-6';
 const webPush = soloArg === '--solo=web-push';
 const soloVisitas = soloArg === '--solo=visitas';
-const baseDeAlertas = fasesCincoSeis || webPush || soloVisitas;
+const soloReportes = soloArg === '--solo=reportes';
+const baseDeAlertas = fasesCincoSeis || webPush || soloVisitas || soloReportes;
 const soloIntegracion = !soloArg || soloArg === '--solo=integracion';
 const solo =
   soloArg && !soloIntegracion && !soloCierre && !baseDeAlertas
@@ -43,11 +46,16 @@ const migracionVisitas = (nombre) =>
   /^\d{14}_(?:visitas_(?:seguimiento_organizacional|institucionales)|solicitudes_visita_reintentos)\.sql$/.test(
     nombre,
   );
+const migracionReportes = (nombre) => /^\d{14}_fase_7_reportes_cuidared_012\.sql$/.test(nombre);
 const esMigracionPosterior = (nombre) =>
   migracionVisitas(nombre) ||
+  migracionReportes(nombre) ||
   /^\d{14}_(?:backoffice(?:_tareas|_alertas_compatibilidad|_prueba_siete_dias)?|(?:fases_5_y_6|cron_alertas)_cuidared_009|web_push_cuidared_010|alertas_necesidades_prioritarias_cuidared_011)\.sql$/.test(
     nombre,
   );
+// Solo programan trabajos de Supabase Cron (pg_cron no existe en el PostgreSQL local).
+const soloProgramaCron = (nombre) =>
+  /^\d{14}_(?:backoffice_tareas|cron_alertas_cuidared_009)\.sql$/.test(nombre);
 const esMigracionBase = (nombre) =>
   nombre.endsWith('.sql') &&
   !esMigracionPosterior(nombre) &&
@@ -55,17 +63,19 @@ const esMigracionBase = (nombre) =>
 const esPruebaSeleccionada = (n) =>
   /^pruebas-.*\.sql$/.test(n) &&
   (n === 'pruebas-00-ayudas.sql' ||
-    (soloVisitas
-      ? /^pruebas-visitas-(?:publicas|seguimiento|institucionales)\.sql$/.test(n)
-      : webPush
-        ? ['pruebas-web-push.sql', 'pruebas-web-push-entregas.sql'].includes(n)
-        : fasesCincoSeis
-          ? /^(?:pruebas-fase-5|pruebas-[56][a-z]?-.*)\.sql$/.test(n)
-          : soloCierre
-            ? n === 'pruebas-cierre-2-4.sql'
-            : soloIntegracion
-              ? n === 'pruebas-integracion-2-4.sql'
-              : incluido(n.slice(8))));
+    (soloReportes
+      ? /^pruebas-7-.*\.sql$/.test(n)
+      : soloVisitas
+        ? /^pruebas-visitas-(?:publicas|seguimiento|institucionales)\.sql$/.test(n)
+        : webPush
+          ? ['pruebas-web-push.sql', 'pruebas-web-push-entregas.sql'].includes(n)
+          : fasesCincoSeis
+            ? /^(?:pruebas-fase-5|pruebas-[56][a-z]?-.*)\.sql$/.test(n)
+            : soloCierre
+              ? n === 'pruebas-cierre-2-4.sql'
+              : soloIntegracion
+                ? n === 'pruebas-integracion-2-4.sql'
+                : incluido(n.slice(8))));
 const env = { ...process.env, PGHOST: host, PGUSER: process.env.PGUSER ?? 'postgres' };
 // Evita que libpq priorice una dirección o un servicio remoto sobre PGHOST.
 delete env.PGHOSTADDR;
@@ -138,10 +148,23 @@ try {
       'metadatos previos de Supabase para las fases 5 y 6',
     );
   }
+  if (soloReportes) {
+    ejecutarArchivo(
+      join(raiz, 'docs/verificacion/local/datos-previos-reportes.sql'),
+      'metadatos previos de Supabase Auth para el backoffice',
+    );
+    for (const f of ordenados(
+      join(raiz, 'supabase/migrations'),
+      (nombre) => esMigracionPosterior(nombre) && !soloProgramaCron(nombre),
+    ))
+      ejecutarArchivo(f, f.slice(raiz.length));
+  }
   for (const f of ordenados(join(raiz, 'docs/propuestas'), (n) =>
-    baseDeAlertas
-      ? /^fase-[56][a-z]?-.*\.sql$/.test(n)
-      : /^fase-(2[abc]|3[ab]|4[abcd])-.*\.sql$/.test(n) && incluido(n.slice(5)),
+    soloReportes
+      ? /^fase-7[a-z]?-.*\.sql$/.test(n) && n !== 'fase-7-reportes.sql'
+      : baseDeAlertas
+        ? /^fase-[56][a-z]?-.*\.sql$/.test(n)
+        : /^fase-(2[abc]|3[ab]|4[abcd])-.*\.sql$/.test(n) && incluido(n.slice(5)),
   )) {
     ejecutarArchivo(f, f.slice(raiz.length));
   }

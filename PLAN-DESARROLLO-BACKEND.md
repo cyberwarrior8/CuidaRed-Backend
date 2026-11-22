@@ -15,8 +15,8 @@ Cada fase entrega API, pruebas, documentación e integración mínima con el fro
 | 3    | Envejecientes         | 3a–3b y cierre aplicados. Retiro, factores y adjuntos conectados. Pendiente verificar archivos reales. |
 | 4    | Visitas y Seguimiento | 4a–4d y cierre aplicados. Series, captura offline y bandeja interna conectadas. |
 | 5    | Necesidades           | SQL aplicado y verificado en Supabase. Catálogo, ocurrencias, prioridad, historial y sincronización listos para pruebas manuales. |
-| 6    | Alertas               | SQL verificado en Supabase. Evaluación inicial ejecutada y tarea diaria activa. Pendientes las pruebas manuales en el navegador. |
-| 7    | Reportes              | Pendiente; resolver métricas, formatos y contenido médico.                                                                      |
+| 6    | Alertas               | SQL verificado en Supabase y tarea diaria activa. Código y pruebas cerrados el 20/11/2026; falta ejecutar el [guion manual](docs/verificacion/manual-fase-6-alertas.md). |
+| 7    | Reportes              | API, contrato y pruebas listos el 20/11/2026. SQL CUIDARED-012 validado en local, **sin aplicar** en Supabase.                    |
 | 8    | Suscripción y Pagos   | Pendiente; resolver oferta comercial y ciclo de suscripción sandbox.                                                            |
 
 ## Fase 1 — Perfil y Acceso
@@ -113,6 +113,8 @@ Cada fase entrega API, pruebas, documentación e integración mínima con el fro
 **Entregables:** dashboard, resumen, reportes y descargas. **Cierre:** totales conciliados, filtros consistentes, vacíos válidos y ninguna exportación fuera del permiso o cuenta.
 
 **Preparación:** formatos, métricas y contenido médico autorizado. **Dependencias:** fases 3–6. **Trazabilidad:** ID07; RF-07, RF-08.
+
+**Decisiones del 20/11/2026:** el resumen de casos exige `resumen:ver` y no depende del plan. Los reportes estadísticos exigen `reportes:ver` y la funcionalidad `dashboard_metricas`; el análisis avanzado y Excel, además `reportes_avanzados`. El plan se comprueba en el servidor. El CSV se genera y audita en el servidor; PDF y Excel se arman en el navegador después de registrar la exportación. El informe médico lo generan Coordinador y Cuidador (no el Administrador) con el contenido del prototipo. Detalle en el [contrato de reportes](docs/contratos/reportes.md); las reglas no definidas por V2 quedan como propuesta técnica D20–D22.
 
 ## Fase 8 — Suscripción y Pagos
 
