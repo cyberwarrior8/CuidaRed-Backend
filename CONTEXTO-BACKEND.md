@@ -326,9 +326,15 @@ Ofertas descritas en S03, con precios aún ausentes:
 | Plan | Cuenta | Límites/funciones descritos |
 | --- | --- | --- |
 | Básico Familiar | Familia | Hasta 2 adultos, 3 familiares y múltiples cuidadores; alertas estándar y visitas recurrentes. |
-| Cuidado Integral | Familia | 6 adultos; familiares/cuidadores ilimitados; alertas críticas, historial inmutable y métricas. |
+| Cuidado Integral | Familia | 6 adultos; familiares/cuidadores ilimitados; alertas críticas, historial inmutable, métricas, análisis avanzado y Excel. |
 | Operación Base | Organización | Hasta 15 adultos y 20 staff; visitas, necesidades y notificaciones. |
-| Gestión Comunitaria Avanzada | Organización | Adultos/staff ilimitados; clasificación de riesgo, Org_Necesidad y reportes avanzados. |
+| Gestión Comunitaria Avanzada | Organización | Cupos y precio por cotización; clasificación de riesgo, Org_Necesidad y reportes avanzados. |
+
+La decisión posterior de suscripciones, registrada en CUIDARED-017, conserva los límites y funciones vigentes de Operación Base y define contratación directa mensual o anual. Gestión Comunitaria Avanzada conserva sus funciones y reemplaza los límites ilimitados de V2 para las nuevas contrataciones por los cupos pactados de adultos mayores, equipo, cuidadores y familiares. [CUIDARED-017](docs/CAMBIOS-SCHEMA-CUIDARED.md#cuidared-017--contratación-y-cupos-por-organización)
+
+El 22/11/2026 el usuario fijó un cupo inicial de cinco cuidadores activos para Básico Familiar. El cupo se administra en Backoffice y se usa también en la prueba de Familia. [CUIDARED-015](docs/CAMBIOS-SCHEMA-CUIDARED.md#cuidared-015--catálogo-dinámico-y-cupo-de-cuidadores)
+
+El 24/11/2026 el usuario aprobó que Cuidado Integral incluya Excel y análisis avanzado. En Familia el análisis se limita a las métricas de adultos, necesidades y alertas disponibles según el rol. [CUIDARED-016](docs/CAMBIOS-SCHEMA-CUIDARED.md#cuidared-016--excel-y-análisis-avanzado-en-cuidado-integral)
 
 Estos beneficios no tienen una matriz completa de funcionalidades ni estructura suficiente en S04. Por la prioridad confirmada de V2, **la prueba aplicable es de 7 días, una sola vez por cuenta, y no se adopta un plan gratuito permanente ni Trial como producto del catálogo**. El frontend ofrece otros planes y una prueba de **30 días**, solo registra pagos manuales con estados distintos y no hace cobros; deberá adaptarse. [F01, F03, F04, F07; D01 resuelta]
 
@@ -338,7 +344,7 @@ Estos beneficios no tienen una matriz completa de funcionalidades ni estructura 
 
 La API bloquea las operaciones cuando la cuenta está vencida, incluidas las peticiones directas y los lotes offline. Las capturas rechazadas pueden reintentarse al recuperar el acceso y se conservan según la entidad y el [contrato de sincronización](docs/contratos/sync.md). [D07/D16]
 
-Siguen pendientes precios, moneda, vigencia, límites, flujo concreto de Stripe y renovaciones/cancelaciones/reembolsos. Elegir Stripe no elige automáticamente Checkout, Elements o un modelo de suscripción recurrente. [Detalles pendientes D07/D08]
+El usuario aprobó Stripe Checkout alojado, renovación automática, cancelación al final de la vigencia, reembolsos de Stripe Sandbox en el historial y precios en USD. Los aumentos dentro del mismo período se prorratean de inmediato. Una reducción o cambio de periodicidad se aplica al próximo corte sin generar crédito. Al transferir la titularidad se programa el final de la renovación del pagador saliente. Los precios familiares inicialmente definidos son USD 9/90 y USD 19/190. Un superadministrador publica las tarifas generales de Familia y Operación Base en Backoffice. Solo Gestión Comunitaria Avanzada se cotiza por cuenta y por periodicidad, con importe y cupos explícitos. [Contrato de suscripciones](docs/contratos/suscripciones.md)
 
 ### 7.10.1 Contexto técnico para Stripe sandbox
 
@@ -346,7 +352,7 @@ Como referencia de implementación futura se consultaron las guías oficiales de
 
 La integración deberá comprobar el entorno de prueba y evitar activar operaciones live. Para confirmar cambios de pago/suscripción, el diseño debe contemplar eventos de Stripe con firma verificada, reintentos, eventos duplicados y entrega fuera de orden. La verificación de firma requiere conservar el cuerpo original de la petición antes de transformarlo con el parser JSON. Volver a una pantalla de éxito no basta para confirmar un pago. Debe acordarse qué eventos/objetos del flujo elegido autorizan la activación de la cuenta, sin confiar en un estado de pago declarado por el navegador. [Referencia técnica: webhooks de Stripe; propuesta de diseño compatible con RF-20]
 
-S04 solo tiene `pago.referencia_pasarela` como referencia externa genérica. Faltará diseñar la relación entre Cuenta, pago, identificadores de Stripe y control de eventos procesados, según el flujo que se seleccione. Los importes y el plan se validan en backend contra el catálogo acordado; no se aceptan como autoridad desde el cliente. Esos campos y mecanismos aún no están implementados. [S04; D07/D08]
+S04 tiene `pago.referencia_pasarela` como referencia externa genérica. Las migraciones de fase 8 agregaron el vínculo entre cuenta, pagador, oferta y factura, con deduplicación y vigencia exacta. El backend verifica los importes y el plan con el catálogo de Price de Sandbox. [Registro de cambios de esquema](docs/CAMBIOS-SCHEMA-CUIDARED.md#cuidared-013--suscripciones-y-pagos-de-prueba-fase-8)
 
 ## 8. Modelo SQL observado
 
@@ -628,7 +634,7 @@ Fecha de las once confirmaciones: **24 de octubre de 2026**. Autoridad: respuest
 | D03 — Resuelta | Voluntario ocasional sin login frente a Auth obligatorio y FK a `auth.users` | «Cuenta e inicio de sesión con Supabase Auth». | Voluntario tiene identidad e inicia sesión; la autorización por visita y la relación con cuenta/plan aún requieren detalle. |
 | D05 — Visitas y autorizadores | V2 exige autorización previa y la decisión original incluía a Familia. | El 19/11/2026 se restringió Visitas y Solicitudes a Organización. | Administrador o Coordinador autoriza antes de la ejecución. La API y la base restringen el módulo por tipo de cuenta. |
 | D06 — Resuelta para fase 6 | Una alerta agrupada de RF-04 frente a exactamente una fuente por alerta | «Una alerta por fuente y un caso prioritario agrupado en pantalla». | Las fuentes vigentes, el ciclo de vida, la deduplicación y los avisos internos aprobados se describen en el [contrato de alertas](docs/contratos/alertas.md). |
-| D07 — Proveedor y modalidad resueltos | No se había definido pasarela ni modalidad de pago del MVP | El usuario eligió Stripe exclusivamente en sandbox de pruebas, sin pagos reales, para el MVP. | Integrar pagos de prueba con Stripe; no usar modo live ni considerar resuelta la viabilidad comercial en República Dominicana. Flujo, precios y reglas de vigencia siguen pendientes. |
+| D07 — Proveedor y modalidad resueltos | No se había definido pasarela ni modalidad de pago del MVP | El usuario eligió Stripe exclusivamente en sandbox de pruebas, sin pagos reales, para el MVP. | Integrar pagos de prueba con Stripe. El contrato de suscripciones recoge las reglas aprobadas del ciclo y del catálogo en USD. |
 | D07 — Acceso vencido resuelto | No se sabía si una cuenta vencida conservaría lectura operativa | «Solo acceder a su cuenta y gestionar la suscripción; bloquear módulos operativos». | Bloquear lectura y escritura operativas de la cuenta vencida; conservar acceso a cuenta/suscripción sin alterar permisos ni titularidad de pago. |
 | D09 — Cédula del adulto resuelta | Cédula opcional en SQL/diccionario y obligatoria en frontend; unicidad local por cuenta | «Obligatoria y única en toda la plataforma». | Alta/edición y BD deben garantizar cédula no nula y unicidad global, incluida concurrencia y sin revelar datos ajenos. |
 | D11 — Método de riesgo resuelto | Puntaje y agregado del frontend no habían sido confirmados | «Sí, conservar cuestionario y máximo de factores vigentes». | Conservar 100 puntos con pesos 30/40/30 y niveles 0–29/30–54/55–100; nivel agregado máximo entre factores vigentes. Persistencia y respuestas incompletas pendientes. |
@@ -648,7 +654,7 @@ El 15/11/2026 el usuario confirmó que la persistencia de Necesidades debe guard
 | --- | --- | --- |
 | D04 | Falta matriz completa por cuenta, rol, dato y permiso explícito | Con los permisos explícitos de V2 como base, ¿cómo se completan los no definidos? ¿Cómo se persiste/revoca el permiso familiar? ¿Qué relación con la cuenta y alcance tiene el Voluntario autenticado? |
 | D05 | Programación/autorización y autorizadores definidos; otros pasos incompletos | ¿Quién solicita, acepta, cancela o revoca? ¿Puede una visita abarcar varias cuentas? ¿Qué ve y cambia cada visitante? |
-| D07 | Planes pagados/prueba de 7 días, Stripe sandbox y bloqueo operativo al vencer definidos; flujo y vigencia incompletos | ¿Qué flujo de Stripe, precios, moneda, límites y cálculo mensual/anual se adoptan? ¿Cómo se renueva, cancela o reembolsa? ¿Qué gestión de cuenta permite cada rol y qué ocurre con procesos internos al vencer? |
+| D07 — Fase 8 resuelta | Sandbox USD, Operación Base con tarifa general y Gestión Comunitaria Avanzada con precio y cupos por cuenta y ciclo. Cambios sin crédito. La prueba gratuita es la única modalidad sin pago. | CUIDARED-014 retiró la gratuidad manual. CUIDARED-017 registra la evolución del catálogo de Organización y su estado de aplicación. [CUIDARED-017](docs/CAMBIOS-SCHEMA-CUIDARED.md#cuidared-017--contratación-y-cupos-por-organización) |
 | D08 — Parcialmente resuelta | CR-162: errores y convenciones de colección aprobados el 31/10/2026 | `docs/CONVENCIONES-API.md` define paginación, metadatos, orden y filtros permitidos. Los contratos por módulo y el del lote offline ya están escritos para las fases 1 a 7. Quedan los recursos y campos específicos de suscripciones y pagos. |
 | D09 | Cédula obligatoria/global ya definida; quedan dominios distintos en las fuentes | ¿Formato telefónico/cédula canónico? ¿Cómo limitar membresías y perfiles Cuidador duplicados? El tratamiento tras anonimización se coordina con D15. |
 | D10 | Estados permitidos sin un grafo general de transiciones | Las transiciones y motivos de Necesidades y Alertas están confirmados en sus contratos. Las reglas de las fases siguientes se definen en sus diseños. |

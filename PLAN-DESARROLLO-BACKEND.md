@@ -17,7 +17,7 @@ Cada fase entrega API, pruebas, documentación e integración mínima con el fro
 | 5    | Necesidades           | SQL aplicado y verificado en Supabase. Catálogo, ocurrencias, prioridad, historial y sincronización listos para pruebas manuales. |
 | 6    | Alertas               | SQL verificado en Supabase y tarea diaria activa. Código y pruebas cerrados el 20/11/2026; falta ejecutar el [guion manual](docs/verificacion/manual-fase-6-alertas.md). |
 | 7    | Reportes              | API, contrato y pruebas listos el 20/11/2026. SQL CUIDARED-012 validado en local, **sin aplicar** en Supabase.                    |
-| 8    | Suscripción y Pagos   | Pendiente; resolver oferta comercial y ciclo de suscripción sandbox.                                                            |
+| 8    | Suscripción y Pagos   | SQL aplicado y verificado en Supabase el 22/11/2026. Configuración de Stripe Sandbox, catálogo y prueba conectada pendientes.                 |
 
 ## Fase 1 — Perfil y Acceso
 
@@ -121,6 +121,7 @@ Cada fase entrega API, pruebas, documentación e integración mínima con el fro
 **Objetivos:** seleccionar plan, gestionar suscripción, procesar pago y consultar historial.
 
 - Planes compatibles con Familia/Organización y sus límites; Stripe exclusivamente sandbox.
+- Contratación directa con tarifas publicadas para Familia y Operación Base. Cotización por cuenta y ciclo exclusivamente para Gestión Comunitaria Avanzada, con importe y cupos individuales acordados.
 - Confirmación mediante eventos autenticados, deduplicación y reintentos; redirección de éxito insuficiente.
 - Vincular vigencia/control de acceso de fase 2 e historial con pantallas comerciales.
 

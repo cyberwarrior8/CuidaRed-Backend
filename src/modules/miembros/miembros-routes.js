@@ -7,6 +7,7 @@ import { businessError } from '../../lib/business-errors.js';
 import { AppError } from '../../lib/errors.js';
 import { ROLES_POR_TIPO } from '../cuentas/permisos.js';
 import { requirePermiso } from '../cuentas/require-cuenta.js';
+import { cancelarRenovacionPorTransferencia } from '../suscripciones/suscripciones-service.js';
 import './miembros-errors.js';
 import { createMiembrosRepository } from './miembros-repository.js';
 import {
@@ -32,7 +33,7 @@ function requireRolDelTipo(res, rol) {
 }
 
 // Rutas relativas a /cuentas/:cuentaId (requireCuenta ya resolvió res.locals.cuenta con el JWT del usuario).
-export function createMiembrosRouter({ audit, adminGateway = null }) {
+export function createMiembrosRouter({ audit, adminGateway = null, stripe, stripeSystemRpc }) {
   const router = Router({ mergeParams: true });
   // Primero se corta temprano con el permiso del contexto; la RPC de cada operación vuelve a autorizar.
   const gestionarMiembros = requirePermiso('usuarios:gestionar');
@@ -167,6 +168,15 @@ export function createMiembrosRouter({ audit, adminGateway = null }) {
   router.post('/titularidad', gestionarMiembros, async (req, res) => {
     if (!res.locals.cuenta.esTitular) throw sinPermiso();
     const { membresia_id: membresiaId } = parse(titularidadSchema, req.body);
+    if (stripe && stripeSystemRpc) {
+      await cancelarRenovacionPorTransferencia({
+        stripe,
+        stripeSystemRpc,
+        rpc: res.locals.access.repository.rpc,
+        cuentaId: cuentaDe(res),
+        membresiaId,
+      });
+    }
     const data = await repoDe(res).transferirTitularidad(cuentaDe(res), membresiaId);
     registrar(res, 'cuenta.titularidad_transferida');
     res.json({ data });

@@ -29,6 +29,8 @@ La migración de Visitas está aplicada en CuidaRed alojado. El alcance D15 cons
 
 ## Comprobaciones
 
+Para preparar Stripe Sandbox, publicar tarifas y cotizaciones y comprobar los pagos desde CuidaRed, sigue el [README de pruebas de Stripe](docs/stripe/README.md).
+
 ```powershell
 npm run lint
 npm run format:check

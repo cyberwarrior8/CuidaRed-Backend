@@ -8,7 +8,7 @@ declare
     {"nombre":"Básico Familiar","tipo":"familia","categoria":"Básico","precio":650,
      "adultos":2,"usuarios":null,"familiares":3,"funcionalidades":["registro_visitas","necesidades_diarias","visitas_recurrentes"]},
     {"nombre":"Cuidado Integral","tipo":"familia","categoria":"Premium","precio":1450,
-     "adultos":6,"usuarios":null,"familiares":null,"funcionalidades":["registro_visitas","necesidades_diarias","visitas_recurrentes","alertas_tiempo_real","historial_inmutable","dashboard_metricas"]},
+     "adultos":6,"usuarios":null,"familiares":null,"funcionalidades":["registro_visitas","necesidades_diarias","visitas_recurrentes","alertas_tiempo_real","historial_inmutable","dashboard_metricas","reportes_avanzados"]},
     {"nombre":"Operación Base","tipo":"organizacion","categoria":"Básico","precio":3500,
      "adultos":15,"usuarios":20,"familiares":null,"funcionalidades":["registro_visitas","necesidades_diarias","tablon_notificaciones","dashboard_metricas"]},
     {"nombre":"Gestión Comunitaria Avanzada","tipo":"organizacion","categoria":"Premium","precio":8500,
@@ -33,7 +33,8 @@ begin
     select plan_categoria_id into strict v_categoria from cuidared.plan_categoria where nombre=item.categoria;
     insert into cuidared.plan(nombre,plan_categoria_id,tipo_cuenta_id,precio,periodicidad,duracion_dias,
       estado,limite_envejecientes,limite_usuarios,limite_familiares)
-    values(item.nombre,v_categoria,v_tipo,item.precio,'mensual',30,'activo',item.adultos,item.usuarios,item.familiares)
+    select item.nombre,v_categoria,v_tipo,item.precio,'mensual',30,'activo',item.adultos,item.usuarios,item.familiares
+    where not exists (select 1 from cuidared.plan p where p.nombre = item.nombre)
     on conflict(nombre) do nothing;
     select plan_id into strict v_plan from cuidared.plan where nombre=item.nombre and tipo_cuenta_id=v_tipo and not bo_gratuito;
     insert into cuidared.plan_funcionalidad(plan_id,funcionalidad)
