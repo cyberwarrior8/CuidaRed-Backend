@@ -55,10 +55,10 @@ begin
     values (v_visita, v_adulto, 'estable');
 
   perform cuidared_api.api_publico_crear_solicitud(jsonb_build_object(
-    'cuenta_id', v_org, 'nombres', 'Ana', 'apellidos', 'Prueba', 'cedula', '00123456789', 'telefono', '8095550100',
+    'cuenta_id', v_org, 'nombres', 'Ana', 'apellidos', 'Prueba', 'cedula', '00123456789', 'telefono', '8095550100', 'correo', 'ana@reportes.test',
     'tipo_visita', 'institucional', 'entidad_visitante', 'Fundación Sintética', 'tipo_entidad', 'fundacion',
     'cantidad_visitantes', 12, 'aporte_previsto', 'Actividad comunitaria', 'fecha_propuesta', v_hoy + 1,
-    'hora_propuesta', '10:00', 'motivo', 'Visita institucional', 'codigo_hash', v_huella));
+    'hora_propuesta', '10:00', 'hora_fin_propuesta', '11:00', 'motivo', 'Visita institucional', 'codigo_hash', v_huella));
   select solicitud_visita_id into strict v_solicitud from cuidared.solicitud_visita where codigo_hash = v_huella;
   perform pruebas.como(v_admin);
   v_institucional := (cuidared_api.api_autorizar_solicitud_visita(v_org, v_solicitud, jsonb_build_object(
@@ -68,6 +68,10 @@ begin
   perform pruebas.como(v_voluntario);
   perform cuidared_api.api_registrar_visita(v_org, v_institucional,
     '{"detalles":[],"observacion_general":"Actividad comunitaria completada."}');
+  -- Fixture de reporte independiente de la hora del reloj. El flujo temporal de confirmación
+  -- se comprueba mediante la API real en pruebas-visitas-confirmacion-aportes.sql.
+  update cuidared.visita set estado = 'completada', confirmada_por = v_admin, confirmada_en = now()
+    where visita_id = v_institucional;
 
   perform pruebas.como(v_admin);
   v_reporte := cuidared_api.api_reporte(v_org, 'visitas', jsonb_build_object('desde', v_hoy, 'hasta', v_hoy));

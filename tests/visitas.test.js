@@ -83,7 +83,10 @@ function setup({
   });
   const audit = vi.fn();
   const app = createApp({
-    env: { origins: [] },
+    env: {
+      origins: [],
+      CODIGO_SEGUIMIENTO_SECRETO: 'clave-sintetica-solo-para-pruebas-de-visitas',
+    },
     gateway: createSupabaseGateway(env, fetch),
     audit,
   });
@@ -92,6 +95,67 @@ function setup({
     request(app)[metodo](`/api/v1/cuentas/7${ruta}`).auth('token', { type: 'bearer' });
   return { app, api, audit, llamadas, rpcLlamadas };
 }
+
+describe('confirmación organizativa de realización', () => {
+  it.each(['administrador', 'coordinador'])(
+    '%s puede confirmar con nota y el servidor conserva el ámbito',
+    async (rol) => {
+      const { api, rpcLlamadas } = setup({
+        rol,
+        rpc: { api_confirmar_realizacion_visita: () => visita({ estado: 'completada' }) },
+      });
+      await api('post', `/visitas/${ID.visita}/confirmar-realizacion`)
+        .send({ realizada: true, nota: 'La organización comprobó la visita.' })
+        .expect(200);
+      expect(rpcLlamadas('api_confirmar_realizacion_visita')[0].cuerpo).toEqual({
+        p_cuenta_id: '7',
+        p_visita_id: ID.visita,
+        p_datos: { realizada: true, nota: 'La organización comprobó la visita.' },
+      });
+    },
+  );
+  it.each(['cuidador', 'voluntario', 'familiar'])(
+    '%s no puede confirmar aunque se le atribuya ese permiso',
+    async (rol) => {
+      const { api, rpcLlamadas } = setup({ rol, permisos: ['visitas:autorizar'] });
+      await api('post', `/visitas/${ID.visita}/confirmar-realizacion`)
+        .send({ realizada: true, nota: 'Prueba de permisos.' })
+        .expect(403);
+      expect(rpcLlamadas('api_confirmar_realizacion_visita')).toHaveLength(0);
+    },
+  );
+  it('Familia no accede a la confirmación', async () => {
+    const { api } = setup({ tipo: 'familia', permisos: ['visitas:autorizar'] });
+    await api('post', `/visitas/${ID.visita}/confirmar-realizacion`)
+      .send({ realizada: true, nota: 'Prueba de ámbito.' })
+      .expect(403);
+  });
+  it('no acepta actor, fecha efectiva ni estado enviados por el navegador', async () => {
+    const { api, rpcLlamadas } = setup();
+    await api('post', `/visitas/${ID.visita}/confirmar-realizacion`)
+      .send({
+        realizada: true,
+        nota: 'Prueba de validación.',
+        actor_id: actor.id,
+        fecha_realizacion: '2030-01-01',
+      })
+      .expect(422);
+    expect(rpcLlamadas('api_confirmar_realizacion_visita')).toHaveLength(0);
+  });
+  it('explica que el horario no terminó sin filtrar detalles de la base', async () => {
+    const { api } = setup({
+      rpc: {
+        api_confirmar_realizacion_visita: () =>
+          rpcError('P0001', 'CR_VISITA_CONFIRMACION_ANTICIPADA'),
+      },
+    });
+    const res = await api('post', `/visitas/${ID.visita}/confirmar-realizacion`)
+      .send({ realizada: true, nota: 'Prueba del horario.' })
+      .expect(409);
+    expect(res.body.error.code).toBe('VISIT_CONFIRMATION_EARLY');
+    expect(JSON.stringify(res.body)).not.toContain('private');
+  });
+});
 
 describe('GET /visitas: historial paginado con el alcance del usuario', () => {
   it('traduce paginación, orden y filtros a la RPC y devuelve metadatos', async () => {

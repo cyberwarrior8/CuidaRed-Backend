@@ -34,6 +34,7 @@ const solicitud = (extra = {}) => ({
   persona_a_visitar: 'Doña Ana',
   fecha_propuesta: '2026-12-01',
   hora_propuesta: '10:30',
+  hora_fin_propuesta: '11:30',
   motivo: 'Visita de compañía',
   ...extra,
 });
@@ -312,17 +313,16 @@ describe('POST /publico/solicitudes-visita: crear', () => {
     expect(a.body.data.codigo).not.toBe(b.body.data.codigo);
     expect(llamadas[0].cuerpo.p_datos.codigo_hash).not.toBe(llamadas[1].cuerpo.p_datos.codigo_hash);
   });
-  it('el correo es opcional y una cadena vacía equivale a no indicarlo', async () => {
+  it('exige un correo para recibir seguimiento y rechaza su ausencia sin consultar la base', async () => {
     const { app, llamadas } = crearConExito();
     await request(app)
       .post('/api/v1/publico/solicitudes-visita')
       .send(solicitud({ correo: '' }))
-      .expect(201);
+      .expect(422);
     const sinCorreo = solicitud();
     delete sinCorreo.correo;
-    await request(app).post('/api/v1/publico/solicitudes-visita').send(sinCorreo).expect(201);
-    expect(llamadas[0].cuerpo.p_datos.correo ?? null).toBeNull();
-    expect(llamadas[1].cuerpo.p_datos.correo ?? null).toBeNull();
+    await request(app).post('/api/v1/publico/solicitudes-visita').send(sinCorreo).expect(422);
+    expect(llamadas).toHaveLength(0);
   });
   it.each([
     ['campo desconocido', { estado: 'autorizada' }],

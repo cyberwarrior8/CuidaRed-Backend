@@ -21,11 +21,8 @@ const telefono = z
   .transform((valor) => valor.replace(/[\s().-]/g, ''))
   .pipe(z.string().regex(/^\+?\d{10,15}$/));
 
-// El correo es opcional: una cadena vacía equivale a no indicarlo.
-const correo = z.preprocess(
-  (valor) => (typeof valor === 'string' && valor.trim() === '' ? undefined : valor),
-  z.string().trim().max(254).pipe(z.email()).nullish(),
-);
+// Toda solicitud nueva debe poder recibir los avisos de seguimiento.
+const correo = z.string().trim().max(254).pipe(z.email());
 
 export const crearSolicitudSchema = z
   .strictObject({
@@ -54,9 +51,16 @@ export const crearSolicitudSchema = z
     persona_a_visitar: texto(3, 120).nullish(),
     fecha_propuesta: z.iso.date(),
     hora_propuesta: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+    hora_fin_propuesta: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
     motivo: texto(3, 300),
   })
   .superRefine((datos, ctx) => {
+    if (datos.hora_fin_propuesta <= datos.hora_propuesta)
+      ctx.addIssue({
+        code: 'custom',
+        path: ['hora_fin_propuesta'],
+        message: 'La hora de fin debe ser posterior al inicio.',
+      });
     if (datos.tipo_visita === 'institucional') {
       for (const campo of ['entidad_visitante', 'tipo_entidad']) {
         if (!datos[campo])
@@ -99,6 +103,7 @@ export const solicitudCreadaSchema = z.object({
   estado: z.literal('pendiente'),
   fecha_propuesta: z.string(),
   hora_propuesta: z.string(),
+  hora_fin_propuesta: z.string().optional(),
 });
 export const estadoPublicoSchema = z.object({
   organizacion: z.string(),
@@ -110,6 +115,11 @@ export const estadoPublicoSchema = z.object({
   motivo_rechazo: z.string().nullable(),
   puede_registrar_observacion: z.boolean(),
   observacion: z.string().nullable(),
+  puede_adjuntar_evidencias: z.boolean().optional(),
+  inicio_observaciones: z.string().nullable().optional(),
+  evidencias: z
+    .array(z.object({ evidencia_id: z.uuid(), nombre_archivo: z.string(), fecha: z.string() }))
+    .optional(),
 });
 
 export const ESTADO_TEXTO = {

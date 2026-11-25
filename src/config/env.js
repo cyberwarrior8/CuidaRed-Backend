@@ -2,6 +2,9 @@
 import { z } from 'zod';
 import { esClavePublicaPush } from '../lib/web-push-validation.js';
 
+const opcional = (regla) =>
+  z.preprocess((valor) => (valor === '' ? undefined : valor), regla.optional());
+
 const schema = z
   .object({
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -22,7 +25,20 @@ const schema = z
       .default('0')
       .transform((valor) => valor === '1'),
     VISITAS_RESEND_API_KEY: z.string().startsWith('re_').optional(),
-    VISITAS_CORREO_REMITENTE: z.email().optional(),
+    VISITAS_CORREO_REMITENTE: opcional(z.email()),
+    VISITAS_CORREO_PROVEEDOR: z.enum(['resend', 'smtp']).default('resend'),
+    VISITAS_SMTP_HOST: opcional(z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9.-]*[a-zA-Z0-9]$/)),
+    VISITAS_SMTP_PORT: z.coerce
+      .number()
+      .int()
+      .refine((puerto) => [465, 587].includes(puerto))
+      .default(465),
+    VISITAS_SMTP_USUARIO: opcional(z.email()),
+    VISITAS_SMTP_PASSWORD: opcional(z.string().min(1)),
+    VISITAS_CORREO_HABILITADO: z
+      .enum(['0', '1'])
+      .default('1')
+      .transform((valor) => valor === '1'),
     CODIGO_SEGUIMIENTO_SECRETO: z.string().min(32).optional(),
     WEB_PUSH_ENABLED: z
       .enum(['true', 'false'])
@@ -57,6 +73,7 @@ export function readEnv(input) {
   }
   const env = result.data;
   if (
+    env.VISITAS_CORREO_PROVEEDOR === 'resend' &&
     (env.VISITAS_RESEND_API_KEY || env.VISITAS_CORREO_REMITENTE) &&
     (!env.VISITAS_RESEND_API_KEY ||
       !env.VISITAS_CORREO_REMITENTE ||
@@ -66,6 +83,23 @@ export function readEnv(input) {
     throw new Error(
       'Configura VISITAS_RESEND_API_KEY, VISITAS_CORREO_REMITENTE, PWA_ORIGIN y SUPABASE_SECRET_KEY para enviar avisos.',
     );
+  }
+  if (env.VISITAS_CORREO_PROVEEDOR === 'smtp') {
+    if (
+      env.VISITAS_CORREO_HABILITADO &&
+      (!correoVisitaConfigurado(env) || !env.SUPABASE_SECRET_KEY)
+    ) {
+      throw new Error(
+        'Configura VISITAS_CORREO_REMITENTE, VISITAS_SMTP_HOST, VISITAS_SMTP_USUARIO, VISITAS_SMTP_PASSWORD, PWA_ORIGIN y SUPABASE_SECRET_KEY para enviar avisos por SMTP.',
+      );
+    }
+    if (
+      env.VISITAS_SMTP_USUARIO &&
+      env.VISITAS_CORREO_REMITENTE &&
+      env.VISITAS_SMTP_USUARIO.toLowerCase() !== env.VISITAS_CORREO_REMITENTE.toLowerCase()
+    ) {
+      throw new Error('VISITAS_CORREO_REMITENTE debe coincidir con VISITAS_SMTP_USUARIO.');
+    }
   }
   if (
     env.VISITAS_PUBLICAS_HABILITADAS &&
@@ -121,4 +155,14 @@ export function readEnv(input) {
     }
   }
   return { ...env, origins, stripeProducts };
+}
+
+export function correoVisitaConfigurado(env) {
+  return Boolean(
+    env.VISITAS_CORREO_REMITENTE &&
+    env.PWA_ORIGIN &&
+    (env.VISITAS_CORREO_PROVEEDOR === 'smtp'
+      ? env.VISITAS_SMTP_HOST && env.VISITAS_SMTP_USUARIO && env.VISITAS_SMTP_PASSWORD
+      : env.VISITAS_RESEND_API_KEY),
+  );
 }

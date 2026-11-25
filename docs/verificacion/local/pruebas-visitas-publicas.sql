@@ -28,8 +28,8 @@ begin
   perform pruebas.miembro(cuenta, coord, 'coordinador');
   perform cuidared_api.api_publico_crear_solicitud(jsonb_build_object(
     'cuenta_id', cuenta, 'nombres', 'Ana', 'apellidos', 'Prueba', 'cedula', '00123456780',
-    'telefono', '8095550100', 'persona_a_visitar', 'Teresa Prueba', 'fecha_propuesta', hoy + 1,
-    'hora_propuesta', '10:30', 'motivo', 'Visita de compañía', 'codigo_hash', huella
+    'telefono', '8095550100', 'correo', 'ana@visitas.test', 'persona_a_visitar', 'Teresa Prueba', 'fecha_propuesta', hoy + 1,
+    'hora_propuesta', '10:30', 'hora_fin_propuesta', '11:00', 'motivo', 'Visita de compañía', 'codigo_hash', huella
   ));
   select solicitud_visita_id into solicitud from cuidared.solicitud_visita where codigo_hash = huella;
   perform pruebas.como(coord);
@@ -48,7 +48,7 @@ begin
   end;
 
   update cuidared.detalle_visita set observacion = 'Informe interno de coordinación.' where visita_id = v_visita;
-  update cuidared.visita set estado = 'completada', fecha = hoy, hora_inicio = '10:30', hora_fin = '11:00'
+  update cuidared.visita set estado = 'completada', fecha = hoy - 1, hora_inicio = '10:30', hora_fin = '11:00'
     where visita_id = v_visita;
   resultado := cuidared_api.api_publico_consultar_solicitud(huella);
   perform pruebas.afirmar(resultado->>'estado' = 'realizada' and (resultado->>'puede_registrar_observacion')::boolean,

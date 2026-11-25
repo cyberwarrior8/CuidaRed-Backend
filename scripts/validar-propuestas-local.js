@@ -10,8 +10,8 @@
  *   5. docs/propuestas/fase-2a-* a fase-4d-*      (bloques de esquema, sin la carga territorial), en orden
  *   6. docs/verificacion/local/pruebas-*.sql      (cada una dentro de una transacción con ROLLBACK)
  * y borra la base al final (salvo --conservar). NUNCA apunta al proyecto Supabase: se niega si PGHOST no es local.
- * --solo=reportes y --solo=suscripciones cargan las migraciones aplicadas disponibles, salvo las de Cron,
- * con los metadatos simulados que necesitan; luego, la propuesta y las pruebas de la fase correspondiente.
+ * --solo=reportes, --solo=visitas y --solo=suscripciones cargan sus migraciones y dependencias, salvo Cron,
+ * con metadatos simulados; después ejecutan las pruebas del módulo seleccionado.
  */
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -45,7 +45,7 @@ const solo =
     : null;
 const incluido = (codigo) => !solo || solo.some((p) => codigo.startsWith(p));
 const migracionVisitas = (nombre) =>
-  /^\d{14}_(?:visitas_(?:seguimiento_organizacional|institucionales)|solicitudes_visita_reintentos)\.sql$/.test(
+  /^\d{14}_(?:visitas_(?:seguimiento_organizacional|institucionales|avisos_recepcion|correo_organizacion|confirmacion_observaciones_evidencias)|solicitudes_visita_reintentos)\.sql$/.test(
     nombre,
   );
 const migracionReportes = (nombre) => /^\d{14}_fase_7_reportes_cuidared_012\.sql$/.test(nombre);
@@ -57,7 +57,7 @@ const esMigracionPosterior = (nombre) =>
   migracionVisitas(nombre) ||
   migracionReportes(nombre) ||
   migracionSuscripciones(nombre) ||
-  /^\d{14}_(?:backoffice(?:_tareas|_alertas_compatibilidad|_prueba_siete_dias)?|(?:fases_5_y_6|cron_alertas)_cuidared_009|web_push_cuidared_010|alertas_necesidades_prioritarias_cuidared_011)\.sql$/.test(
+  /^\d{14}_(?:backoffice(?:_tareas|_alertas_compatibilidad|_prueba_siete_dias|_supervision_plataforma|_soporte_eliminacion_usuarios)?|(?:fases_5_y_6|cron_alertas)_cuidared_009|web_push_cuidared_010|alertas_necesidades_prioritarias_cuidared_011)\.sql$/.test(
     nombre,
   );
 // Solo programan trabajos de Supabase Cron (pg_cron no existe en el PostgreSQL local).
@@ -73,7 +73,9 @@ const esPruebaSeleccionada = (n) =>
     (baseActual
       ? (soloReportes ? /^pruebas-7-.*\.sql$/ : /^pruebas-8[a-z]?-.*\.sql$/).test(n)
       : soloVisitas
-        ? /^pruebas-visitas-(?:publicas|seguimiento|institucionales)\.sql$/.test(n)
+        ? /^pruebas-visitas-(?:publicas|seguimiento|institucionales|avisos|confirmacion-aportes)\.sql$/.test(
+            n,
+          )
         : webPush
           ? ['pruebas-web-push.sql', 'pruebas-web-push-entregas.sql'].includes(n)
           : fasesCincoSeis
@@ -155,7 +157,7 @@ try {
       'metadatos previos de Supabase para las fases 5 y 6',
     );
   }
-  if (baseActual) {
+  if (baseActual || soloVisitas) {
     ejecutarArchivo(
       join(raiz, 'docs/verificacion/local/datos-previos-reportes.sql'),
       'metadatos previos de Supabase Auth para el backoffice',
@@ -170,29 +172,26 @@ try {
       ejecutarArchivo(f, f.slice(raiz.length));
   }
   for (const f of ordenados(join(raiz, 'docs/propuestas'), (n) =>
-    baseActual
-      ? soloReportes
-        ? /^fase-7[a-z]?-.*\.sql$/.test(n) && n !== 'fase-7-reportes.sql'
-        : /^fase-8[a-z]?-.*\.sql$/.test(n) &&
-          ![
-            'fase-8-suscripciones.sql',
-            'fase-8b-backoffice.sql',
-            'fase-8c-retirar-plan-gratuito.sql',
-            'fase-8d-catalogo-cupos.sql',
-            'fase-8e-reportes-integral.sql',
-            'fase-8f-planes-organizacion.sql',
-            'fase-8g-version-tarifas-stripe.sql',
-          ].includes(n)
-      : baseDeAlertas
-        ? /^fase-[56][a-z]?-.*\.sql$/.test(n)
-        : /^fase-(2[abc]|3[ab]|4[abcd])-.*\.sql$/.test(n) && incluido(n.slice(5)),
+    soloVisitas
+      ? false
+      : baseActual
+        ? soloReportes
+          ? /^fase-7[a-z]?-.*\.sql$/.test(n) && n !== 'fase-7-reportes.sql'
+          : /^fase-8[a-z]?-.*\.sql$/.test(n) &&
+            ![
+              'fase-8-suscripciones.sql',
+              'fase-8b-backoffice.sql',
+              'fase-8c-retirar-plan-gratuito.sql',
+              'fase-8d-catalogo-cupos.sql',
+              'fase-8e-reportes-integral.sql',
+              'fase-8f-planes-organizacion.sql',
+              'fase-8g-version-tarifas-stripe.sql',
+            ].includes(n)
+        : baseDeAlertas
+          ? /^fase-[56][a-z]?-.*\.sql$/.test(n)
+          : /^fase-(2[abc]|3[ab]|4[abcd])-.*\.sql$/.test(n) && incluido(n.slice(5)),
   )) {
     ejecutarArchivo(f, f.slice(raiz.length));
-  }
-  if (soloVisitas) {
-    for (const f of ordenados(join(raiz, 'supabase/migrations'), migracionVisitas)) {
-      ejecutarArchivo(f, f.slice(raiz.length));
-    }
   }
   if (webPush) {
     ejecutarArchivo(

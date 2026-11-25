@@ -27,10 +27,10 @@ begin
     values(cuidador, (select min(tipo_cuidado_id) from cuidared.tipo_cuidado), true);
 
   datos := jsonb_build_object(
-    'cuenta_id', cuenta, 'nombres', 'Ana', 'apellidos', 'Prueba', 'cedula', '00123456789', 'telefono', '8095550100',
+    'cuenta_id', cuenta, 'nombres', 'Ana', 'apellidos', 'Prueba', 'cedula', '00123456789', 'telefono', '8095550100', 'correo', 'ana@institucional.test',
     'tipo_visita', 'institucional', 'entidad_visitante', 'Fundación Sintética', 'tipo_entidad', 'fundacion',
     'cantidad_visitantes', 12, 'aporte_previsto', 'Actividad musical y entrega de alimentos.',
-    'fecha_propuesta', cuidared_interno.hoy() + 2, 'hora_propuesta', '10:00', 'motivo', 'Actividad comunitaria', 'codigo_hash', huella);
+    'fecha_propuesta', cuidared_interno.hoy() + 2, 'hora_propuesta', '10:00', 'hora_fin_propuesta', '11:00', 'motivo', 'Actividad comunitaria', 'codigo_hash', huella);
   perform cuidared_api.api_publico_crear_solicitud(datos);
   perform cuidared_api.api_publico_crear_solicitud(datos);
   perform pruebas.afirmar((select count(*) from cuidared.solicitud_visita where codigo_hash = huella) = 1, 'El reintento no duplica la solicitud');
@@ -48,7 +48,7 @@ begin
   perform pruebas.error(format('select cuidared_api.api_obtener_visita(%s,%L::uuid)', cuenta, v_visita), 'P0002');
   perform pruebas.como(cuidador);
   perform pruebas.afirmar(cuidared_api.api_obtener_visita(cuenta, v_visita)->>'visita_id' = v_visita::text, 'El responsable asignado puede abrir la visita institucional');
-  update cuidared.visita set fecha = cuidared_interno.hoy() where visita_id = v_visita;
+  update cuidared.visita set fecha = cuidared_interno.hoy() - 1 where visita_id = v_visita;
   perform cuidared_api.api_iniciar_visita(cuenta, v_visita);
   ruta := cuidared_api.api_visita_preparar_evidencia(cuenta, v_visita, meta)->>'ruta';
   insert into storage.objects(bucket_id, name, owner_id, metadata) values ('evidencias', ruta, cuidador::text, '{"size":10,"mimetype":"application/pdf"}');
@@ -62,7 +62,10 @@ begin
     'base_actualizado_en', (select cuidared_interno.sync_iso(fecha_actualizacion) from cuidared.visita where visita_id = v_visita));
   perform pruebas.afirmar(cuidared_api.api_sync_aplicar_operacion(cuenta, operacion)->>'resultado' = 'aplicada', 'La captura institucional se sincroniza');
   perform pruebas.afirmar(cuidared_api.api_sync_aplicar_operacion(cuenta, operacion)->>'resultado' = 'duplicada', 'El reintento es idempotente');
-  perform pruebas.afirmar(cuidared_api.api_publico_consultar_solicitud(huella)->>'estado' = 'realizada', 'El visitante puede consultar el cierre');
+  perform pruebas.afirmar(cuidared_api.api_publico_consultar_solicitud(huella)->>'estado' = 'autorizada', 'El registro de campo espera confirmación');
+  perform pruebas.como(coord);
+  perform cuidared_api.api_confirmar_realizacion_visita(cuenta, v_visita, '{"realizada":true,"nota":"La coordinación comprobó la actividad."}');
+  perform pruebas.afirmar(cuidared_api.api_publico_consultar_solicitud(huella)->>'estado' = 'realizada', 'El visitante puede consultar el cierre confirmado');
   datos := cuidared_api.api_publico_registrar_observacion_posterior(huella, 'Gracias por recibir a nuestro grupo.');
   perform pruebas.afirmar(datos->>'observacion' = 'Gracias por recibir a nuestro grupo.', 'Se guarda la observación del contacto del grupo');
 end $$;

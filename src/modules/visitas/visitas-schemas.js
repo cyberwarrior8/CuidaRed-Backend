@@ -54,18 +54,61 @@ export function sinNulos(value) {
 // Acciones sin parámetros (p. ej. iniciar): el cuerpo, si existe, debe ser vacío.
 export const sinCuerpoSchema = z.strictObject({});
 
-export const programarVisitaSchema = z.strictObject({
+const visitanteExterno = z
+  .strictObject({
+    tipo: z.enum(['personal', 'institucional']),
+    nombre: texto(3, 120),
+    correo: z.email().max(254),
+    telefono: z
+      .string()
+      .regex(/^\+?\d{10,15}$/)
+      .optional(),
+    entidad: texto(2, 160).optional(),
+    tipo_entidad: z
+      .enum([
+        'fundacion',
+        'iglesia',
+        'universidad',
+        'centro_educativo',
+        'empresa',
+        'grupo_comunitario',
+        'otro',
+      ])
+      .optional(),
+    cantidad: z.number().int().min(1).max(9999),
+    aporte: texto(1, 300).optional(),
+  })
+  .superRefine((v, ctx) => {
+    if (v.tipo === 'institucional' && (!v.entidad || !v.tipo_entidad))
+      ctx.addIssue({ code: 'custom', message: 'Indica la institución o grupo.' });
+    if (v.tipo === 'personal' && (v.entidad || v.tipo_entidad || v.aporte))
+      ctx.addIssue({ code: 'custom', message: 'Revisa la visita personal.' });
+  });
+
+export const confirmarRealizacionSchema = z
+  .strictObject({
+    realizada: z.boolean(),
+    nota: texto(3, 600),
+    envejeciente_ids: z.array(uuid).max(100).refine(sinRepetidos).optional(),
+  })
+  .refine((v) => v.realizada || !v.envejeciente_ids);
+
+const programarBase = z.strictObject({
   fecha,
   hora_programada: hora,
   hora_fin_programada: hora.optional(),
   autorizar: z.boolean().optional(),
   razon: texto(3, 120),
   notas: texto(1, 300).nullish(),
-  envejeciente_ids: z.array(uuid).min(1).max(4).refine(sinRepetidos),
+  envejeciente_ids: z.array(uuid).max(4).refine(sinRepetidos),
   participante_ids: z.array(uuid).min(1).max(3).refine(sinRepetidos),
+  visitante_externo: visitanteExterno.optional(),
 });
+const destinoValido = (v) =>
+  v.visitante_externo?.tipo === 'institucional' || v.envejeciente_ids.length > 0;
+export const programarVisitaSchema = programarBase.refine(destinoValido);
 
-export const programarVisitasRecurrentesSchema = programarVisitaSchema
+export const programarVisitasRecurrentesSchema = programarBase
   .omit({ autorizar: true })
   .extend({
     repeticion: z.discriminatedUnion('frecuencia', [
@@ -76,7 +119,8 @@ export const programarVisitasRecurrentesSchema = programarVisitaSchema
         dias_semana: z.array(z.number().int().min(1).max(7)).min(1).max(7).refine(sinRepetidos),
       }),
     ]),
-  });
+  })
+  .refine(destinoValido);
 
 const detalleSchema = z.strictObject({
   envejeciente_id: uuid,
