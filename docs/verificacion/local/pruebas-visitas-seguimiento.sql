@@ -44,7 +44,7 @@ begin
 
   perform cuidared_api.api_publico_crear_solicitud(jsonb_build_object('cuenta_id', cuenta, 'nombres', 'Ana', 'apellidos', 'Prueba',
     'cedula', '00123456789', 'telefono', '8095550100', 'correo', 'ana@seguimiento.test', 'persona_a_visitar', 'Persona mayor',
-    'fecha_propuesta', dia, 'hora_propuesta', '10:00', 'motivo', 'Visita familiar', 'codigo_hash', huella));
+    'fecha_propuesta', dia, 'hora_propuesta', '10:00', 'hora_fin_propuesta', '11:00', 'motivo', 'Visita familiar', 'codigo_hash', huella));
   select solicitud_visita_id into creada from cuidared.solicitud_visita where codigo_hash = huella;
   perform pruebas.como(admin);
   serie := jsonb_build_object('fecha', dia + 7, 'hora_programada', '09:00', 'hora_fin_programada', '09:45',
@@ -88,10 +88,12 @@ begin
   perform pruebas.afirmar((datos->>'reprogramada')::boolean and datos->>'fecha' = (dia + 1)::text, 'El seguimiento público muestra el nuevo horario');
   perform pruebas.afirmar((select count(*) from cuidared.aviso_visita where solicitud_id = creada and evento = 'recordatorio' and cierre is null) = 1, 'Solo queda vigente el nuevo recordatorio');
   for fila in select value from jsonb_array_elements(cuidared_api.api_visita_reclamar_avisos()) loop
-    perform pruebas.afirmar(fila->>'correo' = 'ana@seguimiento.test' and fila ? 'evento', 'El worker recibe los avisos sin datos del adulto');
+    perform pruebas.afirmar((fila->>'destinatario' = 'visitante' and fila->>'correo' = 'ana@seguimiento.test')
+      or (fila->>'destinatario' = 'organizacion' and fila->>'correo' in ('adm@seguimiento.test','coord@seguimiento.test')),
+      'El worker recibe los avisos para cada destinatario sin datos del adulto');
     perform cuidared_api.api_visita_cerrar_aviso((fila->>'id')::uuid, (fila->>'reclamo')::uuid, 'enviado');
   end loop;
-  perform pruebas.afirmar((select count(*) from cuidared.aviso_visita where solicitud_id = creada and cierre = 'enviado') = 2, 'Se reconocen ambos avisos de estado');
+  perform pruebas.afirmar((select count(*) from cuidared.aviso_visita where solicitud_id = creada and cierre = 'enviado' and evento in ('autorizada','reprogramada')) = 2, 'Se reconocen ambos avisos de estado');
 
   insert into cuidared.prioridad(nombre, orden) values ('Media', 2) on conflict do nothing;
   select min(prioridad_id) into prioridad from cuidared.prioridad;
@@ -100,7 +102,7 @@ begin
   perform pruebas.afirmar(datos->'tareas'->0->>'visita_id' = v_visita::text, 'La agenda enlaza la tarea con la visita');
 
   -- Simula llegar al día de la cita sin depender de la hora en la que se ejecute la prueba.
-  update cuidared.visita set fecha = cuidared_interno.hoy(), estado = 'en_curso' where visita_id = v_visita;
+  update cuidared.visita set fecha = cuidared_interno.hoy() - 1, estado = 'en_curso' where visita_id = v_visita;
   perform pruebas.como(cuidador);
   ruta_evidencia := cuidared_api.api_visita_preparar_evidencia(cuenta, v_visita, meta)->>'ruta';
   insert into storage.objects(bucket_id, name, owner_id, metadata)
@@ -108,23 +110,25 @@ begin
   evidencia := (cuidared_api.api_visita_registrar_evidencia(cuenta, v_visita, meta || jsonb_build_object('ruta', ruta_evidencia))->>'evidencia_id')::uuid;
   datos := jsonb_build_object('detalles', jsonb_build_array(jsonb_build_object('envejeciente_id', persona,
     'estado_general', 'estable', 'observacion', 'Conversó con su familia.')), 'checklist', jsonb_build_array('caidas'));
-  perform pruebas.error(format('select cuidared_api.api_registrar_visita(%s, %L::uuid, %L::jsonb)', cuenta, v_visita, datos),
-    'P0001', 'CR_EVIDENCIA_VISITA_PENDIENTE');
   operacion := jsonb_build_object('id_cliente', gen_random_uuid(), 'entidad', 'visita', 'tipo', 'registrar',
     'registro_id', v_visita, 'datos', datos, 'actualizado_en', cuidared_interno.sync_iso(tiempo_captura),
     'base_actualizado_en', (select cuidared_interno.sync_iso(fecha_actualizacion) from cuidared.visita where visita_id = v_visita));
-  perform pruebas.afirmar(cuidared_api.api_sync_aplicar_operacion(cuenta, operacion)->>'motivo' = 'VISIT_EVIDENCE_PENDING',
-    'La sincronización conserva el registro pendiente de revisión');
+  perform pruebas.afirmar(cuidared_api.api_sync_aplicar_operacion(cuenta, operacion)->>'resultado' = 'aplicada',
+    'La sincronización conserva el informe sin confirmar la realización');
+  perform pruebas.afirmar(cuidared_api.api_sync_aplicar_operacion(cuenta, operacion)->>'resultado' = 'duplicada', 'La captura se aplica una vez');
+  perform pruebas.afirmar((select fecha_realizacion is null and estado = 'en_curso' and registro_campo_en is not null
+    and 'caidas' = any(checklist) from cuidared.visita where visita_id = v_visita), 'El registro de campo conserva checklist y espera confirmación');
   perform pruebas.como(admin);
+  perform pruebas.error(format('select cuidared_api.api_confirmar_realizacion_visita(%s, %L::uuid, %L::jsonb)',
+    cuenta, v_visita, '{"realizada":true,"nota":"Confirmación de prueba"}'), 'P0001', 'CR_EVIDENCIA_VISITA_PENDIENTE');
   perform pruebas.error(format('select cuidared_api.api_visita_revisar_evidencia(%s, %L::uuid, %L::uuid, null)',
     cuenta, v_visita, evidencia), '42501');
   perform pruebas.como(coord);
   perform cuidared_api.api_visita_revisar_evidencia(cuenta, v_visita, evidencia, null);
-  perform pruebas.como(cuidador);
-  perform pruebas.afirmar(cuidared_api.api_sync_aplicar_operacion(cuenta, operacion)->>'resultado' = 'aplicada', 'La captura se aplica tras la validación');
-  perform pruebas.afirmar(cuidared_api.api_sync_aplicar_operacion(cuenta, operacion)->>'resultado' = 'duplicada', 'La captura se aplica una vez');
-  perform pruebas.afirmar((select fecha_realizacion = tiempo_captura and 'caidas' = any(checklist) from cuidared.visita where visita_id = v_visita), 'Se conserva la hora UTC de captura y el checklist');
-  perform pruebas.afirmar((cuidared_api.api_publico_consultar_solicitud(huella)->>'puede_registrar_observacion')::boolean, 'La visita completa abre observaciones');
+  perform cuidared_api.api_confirmar_realizacion_visita(cuenta, v_visita, '{"realizada":true,"nota":"Confirmada tras validar la evidencia."}');
+  perform pruebas.afirmar((select (fecha_realizacion at time zone 'America/Santo_Domingo')::date = cuidared_interno.hoy() - 1
+    and 'caidas' = any(checklist) from cuidared.visita where visita_id = v_visita), 'La confirmación usa la fecha efectiva y conserva el checklist');
+  perform pruebas.afirmar((cuidared_api.api_publico_consultar_solicitud(huella)->>'puede_registrar_observacion')::boolean, 'Desde el horario se admiten observaciones');
 
   perform pruebas.como(admin);
   perform cuidared_api.api_retirar_consentimiento(cuenta, persona, 'Petición recibida');

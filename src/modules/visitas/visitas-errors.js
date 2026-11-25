@@ -7,6 +7,21 @@ import { registerBusinessErrors } from '../../lib/business-errors.js';
  * src/lib/business-errors.js y también los usan las RPC de visitas.
  */
 export const VISITAS_ERRORES = {
+  CR_VISITA_CONFIRMACION_ANTICIPADA: {
+    status: 409,
+    publicCode: 'VISIT_CONFIRMATION_EARLY',
+    message: 'Podrás confirmar la realización cuando termine el horario programado.',
+  },
+  CR_EVIDENCIA_VISITANTE_LIMITE: {
+    status: 409,
+    publicCode: 'VISITOR_EVIDENCE_LIMIT',
+    message: 'Puedes adjuntar hasta tres fotografías a la visita.',
+  },
+  CR_EVIDENCIA_VISITANTE_ARCHIVO: {
+    status: 422,
+    publicCode: 'VISITOR_EVIDENCE_INVALID',
+    message: 'No se pudo verificar la fotografía. Vuelve a adjuntarla.',
+  },
   CR_SERIE_VISITA_INVALIDA: {
     status: 422,
     publicCode: 'INVALID_VISIT_SERIES',

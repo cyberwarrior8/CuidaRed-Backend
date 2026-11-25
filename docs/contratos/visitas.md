@@ -1,6 +1,21 @@
 # Contrato de Visitas y Solicitudes de Visita — fase 4, bloque 4a
 
-> Este documento conserva el contrato histórico de 4a. Desde el 19/11/2026, Visitas y Solicitudes se gestionan solo en Organización, según el [seguimiento organizacional](../VISITAS-ORGANIZACION.md). Las citas individuales creadas desde el portal esperan autorización. Los clientes históricos que omiten `autorizar` y las series conservan la programación con autorización.
+> Este documento conserva abajo el contrato histórico de 4a. La especificación vigente es el [seguimiento organizacional](../VISITAS-ORGANIZACION.md), con [migración y verificación del 23/11/2026](../CAMBIOS-SCHEMA-VISITAS.md). Visitas y Solicitudes están excluidas de Cuenta Familia. El visitante externo no es un usuario registrado.
+
+## Ampliación vigente: contacto, confirmación y aportes
+
+- `POST /api/v1/cuentas/:cuentaId/visitas` y `/visitas/recurrentes` admiten `visitante_externo`: `{tipo, nombre, correo, telefono?, cantidad, entidad?, tipo_entidad?, aporte?}`. `tipo` es `personal` o `institucional`; el segundo exige entidad y tipo. Las personales requieren al menos un adulto; las institucionales admiten `envejeciente_ids: []`. El gestor puede coordinar personalmente la visita. Express genera la referencia y el hash: no acepta actor, código ni confirmación del cliente. Con contacto externo la programación queda autorizada y crea seguimiento público.
+- `POST /visitas/:visitaId/registrar` guarda el informe en `en_curso`, con `registro_campo_en`, y no cambia la última visita efectiva. La cola offline mantiene su contrato de captura e idempotencia; aplicar un registro no confirma la realización.
+- **`POST /visitas/:visitaId/confirmar-realizacion`** recibe `{realizada: boolean, nota: string, envejeciente_ids?: UUID[]}`. Nota de 3 a 600 caracteres; hasta 100 adultos, solo al confirmar una actividad institucional realizada. Exige Administrador/Coordinador de Organización y `visitas:autorizar`. Antes del fin responde 409 `VISIT_CONFIRMATION_EARLY`. Si se realizó completa la visita; de lo contrario la cancela con motivo. Devuelve el detalle actualizado. Un reintento idéntico no duplica efectos.
+- `GET /visitas/:visitaId` añade `puede_confirmar_realizacion`, `registro_campo_en`, `confirmada_en`, `confirmacion_notas` y `observacion_visitante`. La disponibilidad de confirmar se decide en el servidor.
+- **`GET /visitas/:visitaId/evidencias-visitante`** devuelve las fotografías autorizadas de esa visita con `url_descarga` firmada. Exige `visitas:ver` y alcance sobre la visita; no permite consultar archivos de otra cuenta.
+- La creación pública exige `correo`, `hora_propuesta` y `hora_fin_propuesta` (fin posterior a inicio). La revisión devuelve ambos horarios. El historial conserva solicitudes `rechazada` con motivo.
+- `POST /api/v1/publico/solicitudes-visita/observacion`: `{codigo, observacion}`; permitido desde el inicio de una visita autorizada y después de realizada, sin sobrescribir el informe del equipo. Una observación de 3 a 600 caracteres por solicitud, con reintento idéntico permitido.
+- **`POST /api/v1/publico/solicitudes-visita/evidencias`**: `{codigo, id: UUID, nombre, archivo: base64}`. Hasta tres JPEG/PNG/WebP de 2 MB, normalizadas a JPEG privado sin EXIF/GPS. Devuelve el estado público actualizado. Solo esta ruta admite JSON de hasta 3 MB; se conserva el límite general de 16 KB.
+- La consulta pública añade `puede_adjuntar_evidencias`, `inicio_observaciones` y `evidencias` (metadatos sin rutas). Mantiene `puede_registrar_observacion`; ambos permisos se verifican también en cada escritura.
+- Correo asíncrono mediante cola: aceptación/rechazo con motivo, reprogramación/cancelación, aviso al inicio y confirmación. [Activación SMTP pendiente](../ACTIVAR-CORREO-PROYECTO.md). Aceptar una acción HTTP no acredita entrega al buzón.
+
+Lo que sigue describe la fase histórica 4a; cuando difiere, prevalece esta ampliación.
 
 ## Estado y alcance
 

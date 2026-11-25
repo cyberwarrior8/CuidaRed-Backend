@@ -104,6 +104,10 @@ export function createApp({
   // Un lote de sync con observaciones y necesidades puede superar 16 kB; solo esa ruta admite más. Si el analizador
   // de la ruta ya leyó el cuerpo, el global no vuelve a leerlo.
   app.use('/api/v1/cuentas/:cuentaId/sync', express.json({ limit: '256kb', strict: true }));
+  app.post(
+    '/api/v1/publico/solicitudes-visita/evidencias',
+    express.json({ limit: '3mb', strict: true }),
+  );
   app.use(express.json({ limit: '16kb', strict: true }));
   app.get('/health/live', (_req, res) => res.json({ status: 'ok' }));
   // Módulo Backoffice exclusivo para administración interna de plataforma (BO-01, BO-02)

@@ -2,6 +2,9 @@
 import { Router } from 'express';
 import { rateLimit } from 'express-rate-limit';
 import { AppError, unavailable } from '../../lib/errors.js';
+import { randomUUID } from 'node:crypto';
+import { fotoVisitanteSchema, subirFotoVisitante } from './evidencias-visitante.js';
+import { uuidParam } from '../visitas/visitas-schemas.js';
 import '../visitas/visitas-errors.js';
 import { parseBody } from '../visitas/visitas-schemas.js';
 import {
@@ -60,7 +63,8 @@ function leerCodigo(codigo) {
  *   GET  /publico/organizaciones                       { cuenta_id, nombre } de organizaciones con acceso operativo
  *   POST /publico/solicitudes-visita                   crea la solicitud y devuelve el código UNA vez
  *   POST /publico/solicitudes-visita/consulta          { codigo } → estado público
- *   POST /publico/solicitudes-visita/observacion       { codigo, observacion } para una visita realizada
+ *   POST /publico/solicitudes-visita/observacion       { codigo, observacion } desde el inicio de la cita
+ *   POST /publico/solicitudes-visita/evidencias        { codigo, id, nombre, archivo } foto privada
  */
 export function createPublicoRouter(deps, rpc) {
   const router = Router({ mergeParams: true });
@@ -82,11 +86,12 @@ export function createPublicoRouter(deps, rpc) {
   router.post('/solicitudes-visita', limitador(LIMITE_CREACION), async (req, res) => {
     const { idempotencia, ...datos } = parseBody(crearSolicitudSchema, req.body);
     // El código se genera aquí y a la base solo llega su hash: ni la base ni los registros guardan el código.
-    const codigo = generarCodigoSeguimiento(idempotencia, deps.env?.CODIGO_SEGUIMIENTO_SECRETO);
+    const referencia = idempotencia ?? randomUUID();
+    const codigo = generarCodigoSeguimiento(referencia, deps.env?.CODIGO_SEGUIMIENTO_SECRETO);
     const creada = salida(
       solicitudCreadaSchema,
       await rpc('api_publico_crear_solicitud', {
-        p_datos: { ...datos, codigo_hash: huella(codigo) },
+        p_datos: { ...datos, codigo_hash: huella(codigo), referencia_codigo: referencia },
       }),
     );
     log(res, 'solicitud_visita.creada');
@@ -124,6 +129,33 @@ export function createPublicoRouter(deps, rpc) {
     );
     log(res, 'solicitud_visita.observacion');
     res.json({ data: { ...estado, estado_texto: ESTADO_TEXTO[estado.estado] } });
+  });
+
+  router.post('/solicitudes-visita/evidencias', limitador(LIMITE_CREACION), async (req, res) => {
+    const datos = parseBody(fotoVisitanteSchema, req.body);
+    const hash = huella(leerCodigo(datos.codigo));
+    const estado = salida(
+      estadoPublicoSchema,
+      await subirFotoVisitante({
+        hash,
+        datos,
+        rpc,
+        storage: deps.adminGateway?.evidenciaVisitante,
+      }),
+    );
+    log(res, 'solicitud_visita.evidencia');
+    res.status(201).json({ data: { ...estado, estado_texto: ESTADO_TEXTO[estado.estado] } });
+  });
+  router.post('/solicitudes-visita/evidencias/:id/descarga', async (req, res) => {
+    const { codigo } = parseBody(consultaSchema, req.body);
+    const data = await rpc('api_publico_evidencia_descarga', {
+      p_codigo_hash: huella(leerCodigo(codigo)),
+      p_id: uuidParam(req.params.id),
+    });
+    if (!data?.ruta || !data?.nombre || !deps.adminGateway?.evidenciaVisitante) throw unavailable();
+    res.json({
+      data: { url: await deps.adminGateway.evidenciaVisitante.descarga(data.ruta, data.nombre) },
+    });
   });
 
   // Cualquier otra ruta o método bajo /publico es 404: nunca cae en la validación de sesión de las rutas protegidas.

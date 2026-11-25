@@ -13,6 +13,7 @@ import './visitas-errors.js';
 import { createVisitasRepository } from './visitas-repository.js';
 import {
   autorizarSolicitudSchema,
+  confirmarRealizacionSchema,
   cancelarVisitaSchema,
   parseBody,
   programarVisitaSchema,
@@ -42,9 +43,9 @@ import {
  *   POST /solicitudes-visita/:id/autorizar     visitas:autorizar    crea la visita programada
  *   POST /solicitudes-visita/:id/rechazar      visitas:autorizar
  */
-export function createVisitasRouter({ audit }) {
+export function createVisitasRouter({ audit, env, adminGateway }) {
   const router = Router({ mergeParams: true });
-  const repo = (res) => createVisitasRepository(res.locals.access.repository.rpc);
+  const repo = (res) => createVisitasRepository(res.locals.access.repository.rpc, env);
   const cuentaId = (res) => res.locals.cuenta.cuentaId;
   router.use(['/visitas', '/solicitudes-visita'], (_req, res, next) => {
     if (res.locals.cuenta.tipo !== 'organizacion') {
@@ -134,6 +135,45 @@ export function createVisitasRouter({ audit }) {
       const visita = await repo(res).registrar(cuentaId(res), visitaId, datos);
       log(res, 'visita.registrada');
       res.json({ data: visita });
+    },
+  );
+
+  router.post(
+    '/visitas/:visitaId/confirmar-realizacion',
+    requirePermiso('visitas:autorizar'),
+    async (req, res) => {
+      if (!['administrador', 'coordinador'].includes(res.locals.cuenta.rol))
+        throw new AppError(
+          403,
+          'FORBIDDEN',
+          'La organización confirma la realización de la visita.',
+        );
+      const data = await res.locals.access.repository.rpc('api_confirmar_realizacion_visita', {
+        p_cuenta_id: cuentaId(res),
+        p_visita_id: uuidParam(req.params.visitaId),
+        p_datos: parseBody(confirmarRealizacionSchema, req.body),
+      });
+      if (!data?.visita_id) throw unavailable();
+      log(res, 'visita.realizacion_confirmada');
+      res.json({ data });
+    },
+  );
+  router.get(
+    '/visitas/:visitaId/evidencias-visitante',
+    requirePermiso('visitas:ver'),
+    async (req, res) => {
+      const rows = await res.locals.access.repository.rpc('api_visita_evidencias_visitante', {
+        p_cuenta_id: cuentaId(res),
+        p_visita_id: uuidParam(req.params.visitaId),
+      });
+      if (!Array.isArray(rows) || !adminGateway?.evidenciaVisitante) throw unavailable();
+      const data = await Promise.all(
+        rows.map(async ({ ruta, ...item }) => ({
+          ...item,
+          url_descarga: await adminGateway.evidenciaVisitante.descarga(ruta, item.nombre_archivo),
+        })),
+      );
+      res.json({ data });
     },
   );
 

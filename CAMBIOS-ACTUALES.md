@@ -1,5 +1,21 @@
 # Cambios actuales
 
+## 25/11/2026 — Integración reciente y preparación del PR de visitas
+
+- Actualizada la base desde `origin/Integracion` hasta `1226675`, con suscripciones y Stripe Sandbox. Se conciliaron configuración, rutas administrativas, pruebas y selección SQL con el trabajo local de visitas, correo y soporte. Las variables privadas se conservaron sin cambios.
+- Los respaldos completos permanecen en Git stash. Se mantiene la eliminación local del documento histórico de esquema; las entradas nuevas CUIDARED-013 a CUIDARED-018 se conservan aparte en `docs/CAMBIOS-SCHEMA-SUSCRIPCIONES.md`. Este pull no aplica migraciones ni modifica Supabase.
+- El PR selecciona únicamente visitas y sus dependencias de correo: SMTP con Nodemailer, diagnóstico, migraciones de recepción/buzón y confirmación/aportes. Los cambios locales de soporte y supervisión permanecen fuera del PR. No se incluyen archivos de entorno, credenciales, fotografías ni artefactos de pruebas.
+- Verificación tras la combinación: ESLint y 1.375 pruebas aprobadas. La copia exacta del PR pasó 1.349 pruebas en 29 archivos. La entrega real de correos sigue pendiente de la contraseña de aplicación del dueño del Gmail.
+
+## 23/11/2026 — Contacto externo, aportes y confirmación de visitas
+
+- `src/modules/visitas/` incorpora contacto personal/institucional en programación, referencia de seguimiento generada en el servidor y confirmación positiva/negativa por Administrador o Coordinador después del fin. Registrar en campo conserva el informe pendiente; solo confirmar una realización modifica la última visita efectiva. La cuenta Familia permanece excluida.
+- `src/modules/publico/` exige correo y fin de horario y permite observaciones desde el inicio de la visita. Las fotografías se validan, normalizan y guardan en un bucket privado, con cuotas e idempotencia. `src/app.js` amplía el límite JSON únicamente para esta carga; `src/lib/supabase-admin.js` limita las operaciones de Storage y RPC al alcance previsto.
+- `avisos-visita.js` añade aviso al inicio con enlace a aportes, código reconstruido por HMAC y confirmación de realización. Los rechazos conservan el motivo. No se cambia el remitente ni se activa una cola sin credenciales.
+- Aplicada en Supabase la migración `20261124032710_visitas_confirmacion_observaciones_evidencias` bajo la autorización previa del usuario. [Registro de esquema, permisos, alcance y comprobaciones](docs/CAMBIOS-SCHEMA-VISITAS.md).
+- Validación: 1.341 pruebas en 28 archivos, ESLint global y Prettier de los archivos de esta entrega correctos. La prueba HTTP verifica la carga de fotografía mayor de 16 KB manteniendo el límite general para consultas y descargas. La prueba SQL alojada con datos sintéticos y ROLLBACK pasó programación, rechazo, avisos, aportes, aislamiento, confirmación positiva/negativa, fechas efectivas y exclusión de Familia/Cuidador. Se actualizan las pruebas SQL locales al nuevo contrato y su selector de migraciones; no se ejecutó esa batería local porque falta PostgreSQL/psql.
+- Pendiente externo: `npm run visitas:correo` detecta que falta la contraseña de aplicación del Gmail y la cola está pausada. [Pasos exclusivos del propietario](docs/ACTIVAR-CORREO-PROYECTO.md). No se enviaron correos ni se cargaron fotografías reales. Sin commits ni push en esta entrega.
+
 ## 25/11/2026 — Revisión de la compra y pruebas de Stripe
 
 - `src/modules/suscripciones/` conserva el indicador de plan cotizable en el catálogo y devuelve mensajes específicos si vence Checkout o si un intento incierto sigue reservado. Se mantiene la clave de idempotencia del mismo intento al reintentar con Stripe.
