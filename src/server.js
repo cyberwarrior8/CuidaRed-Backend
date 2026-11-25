@@ -6,6 +6,8 @@ import { createAuditSink } from './lib/audit.js';
 import { createAdminGateway } from './lib/supabase-admin.js';
 import { createSupabaseGateway } from './modules/access/supabase-gateway.js';
 import { iniciarAvisosVisita } from './modules/visitas/avisos-visita.js';
+import { createStripeGateway } from './modules/suscripciones/stripe-gateway.js';
+import { createStripeSystemRpc } from './modules/suscripciones/suscripciones-repository.js';
 
 const env = readEnv(process.env);
 const audit = createAuditSink();
@@ -14,6 +16,8 @@ const app = createApp({
   env,
   gateway: createSupabaseGateway(env),
   adminGateway,
+  stripe: createStripeGateway(env),
+  stripeSystemRpc: createStripeSystemRpc(env),
   audit,
 });
 const detenerAvisos = iniciarAvisosVisita({ env, adminGateway, audit });

@@ -1,5 +1,52 @@
 # Cambios actuales
 
+## 25/11/2026 — Revisión de la compra y pruebas de Stripe
+
+- `src/modules/suscripciones/` conserva el indicador de plan cotizable en el catálogo y devuelve mensajes específicos si vence Checkout o si un intento incierto sigue reservado. Se mantiene la clave de idempotencia del mismo intento al reintentar con Stripe.
+- La API comprueba los identificadores del precio, la sesión y la suscripción antes de actuar. Las solicitudes de cotización se auditan después de validar su respuesta.
+- CUIDARED-018 devuelve y verifica la versión de las tarifas directas. Las pruebas SQL cubrieron el rechazo de precios desactualizados al comprar y cambiar de plan, y la reanudación con el precio original. Se aplicó `20261125051832` con aprobación y se verificaron las seis ofertas en Supabase.
+- `docs/stripe/README.md` documenta la configuración local, la publicación, el recorrido de pago y los resultados esperados. Está enlazado desde el README principal.
+- Pasaron 1314 pruebas del backend y las suites SQL locales de fases 7 y 8.
+
+## 24/11/2026 — Contratación y cupos de planes de Organización
+
+- `src/modules/suscripciones/` y `src/modules/backoffice/` distinguen la tarifa directa de Operación Base y la cotización de Gestión Comunitaria Avanzada. La cotización liga precio, periodicidad y cuatro cupos a una versión por organización.
+- La propuesta SQL de CUIDARED-017 aplica los términos de la versión asociada al contrato y conserva los registros e intentos anteriores. Su estado figura en `docs/CAMBIOS-SCHEMA-CUIDARED.md`.
+- Pasaron 1309 pruebas de backend y las pruebas SQL locales de fases 7 y 8. Se aplicó la migración `20261124052239` con aprobación y se verificó el catálogo en Supabase.
+
+## 24/11/2026 — Reportes avanzados en Cuidado Integral
+
+- `docs/propuestas/fase-8e-reportes-integral.sql` añade Excel y análisis avanzado a Cuidado Integral. El catálogo y la autorización consultan la misma capacidad del plan. Visitas sigue siendo exclusivo de Organización.
+- `docs/verificacion/local/pruebas-8-reportes-integral.sql` cubre los beneficios del plan, la exportación y los límites por rol y tipo de cuenta.
+- Migración `20261124040230` aplicada con aprobación y capacidad efectiva verificada en Supabase. Pasaron las pruebas SQL locales de reportes de Cuidado Integral y suscripciones.
+
+## 23/11/2026 — Disponibilidad de publicación de tarifas
+
+- La API de tarifas y cotizaciones de Backoffice informa si falta activar Stripe Sandbox o asociar sus productos. Conserva el rechazo de las escrituras mientras falte configuración.
+- Pasaron 31 pruebas HTTP de Backoffice y Suscripción, incluida la publicación de una tarifa con Stripe simulado y el rechazo cuando falta configuración.
+
+## 22/11/2026 — Catálogo de suscripción y cupo de cuidadores
+
+- `src/modules/suscripciones/` consulta el catálogo desde el servidor, separado de las ofertas publicadas en Stripe Sandbox.
+- Backoffice guarda y audita el cupo de Básico Familiar. Cinco cuidadores activos es el valor inicial, también para la prueba de Familia. El servidor limita altas y cambios de rol al sumar una plaza.
+- El cambio de base se registra en [CUIDARED-015](docs/CAMBIOS-SCHEMA-CUIDARED.md#cuidared-015--catálogo-dinámico-y-cupo-de-cuidadores).
+- Se aplicó en Supabase como `20261123031023`. La verificación incluyó 29 pruebas HTTP de Suscripción y Backoffice, pruebas SQL aisladas y la comprobación de valores y permisos en Supabase.
+
+## 22/11/2026 — Retiro del plan gratuito
+
+- Se retiró el endpoint administrativo de asignación de plan gratuito de `src/modules/suscripciones/`. Las pruebas vencidas quedan fuera de los módulos operativos salvo una vigencia pagada confirmada.
+- Supabase aplicó y verificó CUIDARED-014 como `20261123024158`. Se archivaron los planes gratuitos y las dos familias afectadas quedaron sin plan y con suscripción vencida. Sus fechas de prueba se conservaron y los ajustes quedaron auditados. [Cambios de esquema](docs/CAMBIOS-SCHEMA-CUIDARED.md#cuidared-014--retiro-del-plan-gratuito-de-backoffice)
+- Validación completada con 28 pruebas HTTP de suscripción y Backoffice, pruebas de PostgreSQL aislado y compilación de Backoffice.
+
+## 22/11/2026 — Fase 8, suscripciones y pagos de prueba
+
+- Se agregó el módulo `src/modules/suscripciones/` para consultar catálogo, cotizaciones e historial, iniciar Checkout, prorratear aumentos y programar bajas de plan, cambios de ciclo o cancelaciones. Las acciones comerciales requieren titularidad, incluso con acceso operativo vencido.
+- El webhook conserva los bytes firmados, valida el modo Sandbox y la relación entre cuenta y objetos del proveedor. La base registra un solo pago por factura y aplica la vigencia tras conciliación.
+- El flujo de titularidad programa primero el fin de la renovación asociada a la persona saliente. Las facturas históricas mantienen al pagador original.
+- Se incorporaron tarifas en USD y cotizaciones por cuenta desde Backoffice. El primer despliegue desactivó la asignación automática del plan gratuito. El retiro posterior se registra en CUIDARED-014.
+- Se prepararon el importador de los cuatro Price familiares, las pruebas HTTP y SQL y la documentación de operación. Supabase registró las migraciones `20261123013059` y `20261123013142` tras la aprobación del usuario. [Registro de esquema](docs/CAMBIOS-SCHEMA-CUIDARED.md#cuidared-013--suscripciones-y-pagos-de-prueba-fase-8) · [Contrato de suscripciones](docs/contratos/suscripciones.md) · [Guía Sandbox](docs/FASE-8-SANDBOX.md)
+- Validación local del backend: ESLint, 1.300 pruebas Vitest/Supertest y los dos bloques SQL en PostgreSQL aislado. La prueba de pago conectada queda pendiente de configurar el sandbox y publicar el catálogo.
+
 ## 21/11/2026 — Correcciones de Reportes y seguimiento por visitas
 
 - Resumen y Reportes consultan las opciones de filtros de todo el alcance autorizado. Las dos rutas usan una RPC con permisos por cuenta y requisitos de plan por módulo.

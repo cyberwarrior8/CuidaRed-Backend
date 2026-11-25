@@ -29,6 +29,19 @@ const schema = z
       .default('false')
       .transform((valor) => valor === 'true'),
     WEB_PUSH_PUBLIC_KEY: z.string().refine(esClavePublicaPush).optional(),
+    STRIPE_SANDBOX_ENABLED: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((valor) => valor === 'true'),
+    STRIPE_SECRET_KEY: z
+      .string()
+      .regex(/^(?:sk|rk)_test_[A-Za-z0-9]+$/)
+      .optional(),
+    STRIPE_WEBHOOK_SECRET: z
+      .string()
+      .regex(/^whsec_[A-Za-z0-9]+$/)
+      .optional(),
+    STRIPE_SANDBOX_PRODUCTS_JSON: z.string().optional(),
   })
   .refine((env) => !env.WEB_PUSH_ENABLED || !!env.WEB_PUSH_PUBLIC_KEY, {
     path: ['WEB_PUSH_PUBLIC_KEY'],
@@ -63,6 +76,18 @@ export function readEnv(input) {
     );
   }
   const origins = env.FRONTEND_ORIGINS.split(',').map((v) => v.trim());
+  if (
+    env.STRIPE_SANDBOX_ENABLED &&
+    (!env.STRIPE_SECRET_KEY ||
+      !env.STRIPE_WEBHOOK_SECRET ||
+      !env.SUPABASE_SECRET_KEY ||
+      !env.PWA_ORIGIN ||
+      !origins.includes(env.PWA_ORIGIN))
+  ) {
+    throw new Error(
+      'Stripe Sandbox requiere STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, SUPABASE_SECRET_KEY y PWA_ORIGIN autorizado.',
+    );
+  }
   for (const value of [env.SUPABASE_URL, ...origins, ...(env.PWA_ORIGIN ? [env.PWA_ORIGIN] : [])]) {
     const url = new URL(value);
     if (!['https:', 'http:'].includes(url.protocol)) throw new Error('Protocolo de URL inválido.');
@@ -79,5 +104,21 @@ export function readEnv(input) {
   ) {
     throw new Error('FRONTEND_ORIGINS debe contener orígenes exactos sin rutas ni barra final.');
   }
-  return { ...env, origins };
+  const productoId = z.string().regex(/^prod_[A-Za-z0-9]+$/);
+  const productos = z.strictObject({
+    basico_familiar: productoId,
+    cuidado_integral: productoId,
+    operacion_base: productoId,
+    gestion_comunitaria_avanzada: productoId,
+  });
+  let stripeProducts = null;
+  if (env.STRIPE_SANDBOX_PRODUCTS_JSON) {
+    try {
+      stripeProducts = productos.parse(JSON.parse(env.STRIPE_SANDBOX_PRODUCTS_JSON));
+      if (new Set(Object.values(stripeProducts)).size !== 4) throw new Error();
+    } catch {
+      throw new Error('Configuración inválida: STRIPE_SANDBOX_PRODUCTS_JSON');
+    }
+  }
+  return { ...env, origins, stripeProducts };
 }

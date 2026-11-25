@@ -14,7 +14,7 @@ const token = (aal = 'aal1') =>
   Buffer.from(JSON.stringify({ sub: actor, session_id: session, aal })).toString('base64url') +
   '.firma';
 const bearer = (aal) => 'Bearer ' + token(aal);
-function fixture(handlers = {}) {
+function fixture(handlers = {}, { stripe, stripeProducts } = {}) {
   const rpc = vi.fn(async (name, args) => {
     if (name in handlers) return handlers[name](args);
     if (name === 'sesion') return { estado: 'ok', rol: 'auditor', usuario_id: actor };
@@ -30,14 +30,238 @@ function fixture(handlers = {}) {
     })),
   };
   const app = createApp({
-    env: { origins: ['http://localhost:5174'], SUPABASE_URL: 'https://test.supabase.co' },
+    env: {
+      origins: ['http://localhost:5174'],
+      SUPABASE_URL: 'https://test.supabase.co',
+      stripeProducts,
+    },
     gateway,
     adminGateway: { backofficeRpc: rpc },
+    stripe,
     audit: vi.fn(),
   });
   return { app, rpc, gateway };
 }
+
+describe('Disponibilidad de tarifas de Stripe Sandbox', () => {
+  const sesion = () => ({ estado: 'ok', rol: 'super_admin' });
+  const tarifas = '/api/admin/planes-stripe';
+  const codigo = 'basico_familiar_mensual';
+  const cambio = { importe_centavos: 950, motivo: 'Ajuste de tarifa de prueba' };
+
+  it('informa los bloqueos de configuración y rechaza la publicación antes de crear un precio', async () => {
+    const { app, rpc } = fixture({ sesion, stripe_leer: () => ({ tarifas: [] }) });
+    const consulta = await request(app)
+      .get(tarifas)
+      .set('Authorization', bearer('aal2'))
+      .expect(200);
+    expect(consulta.body.data).toEqual({
+      tarifas: [],
+      disponibles: false,
+      bloqueos: ['sandbox_inactivo', 'productos_sin_configurar'],
+    });
+    const publicacion = await request(app)
+      .patch(`${tarifas}/${codigo}`)
+      .set('Authorization', bearer('aal2'))
+      .send(cambio)
+      .expect(503);
+    expect(publicacion.body.error.code).toBe('SANDBOX_UNAVAILABLE');
+    expect(rpc.mock.calls.some(([name]) => name === 'stripe_preparar_tarifa')).toBe(false);
+  });
+
+  it('con el sandbox y el producto configurados permite crear y publicar la tarifa de prueba', async () => {
+    const stripe = {
+      createPrice: vi.fn().mockResolvedValue({
+        id: 'price_Basico',
+        product: 'prod_Basico',
+        livemode: false,
+        active: true,
+        type: 'recurring',
+        billing_scheme: 'per_unit',
+        unit_amount: 950,
+        currency: 'usd',
+        recurring: { interval: 'month', interval_count: 1, usage_type: 'licensed' },
+      }),
+    };
+    const { app, rpc } = fixture(
+      {
+        sesion,
+        stripe_leer: () => ({ tarifas: [] }),
+        stripe_preparar_tarifa: () => ({ periodicidad: 'mensual' }),
+      },
+      { stripe, stripeProducts: { basico_familiar: 'prod_Basico' } },
+    );
+    const consulta = await request(app)
+      .get(tarifas)
+      .set('Authorization', bearer('aal2'))
+      .expect(200);
+    expect(consulta.body.data).toMatchObject({ disponibles: true, bloqueos: [] });
+    await request(app)
+      .patch(`${tarifas}/${codigo}`)
+      .set('Authorization', bearer('aal2'))
+      .send(cambio)
+      .expect(204);
+    expect(stripe.createPrice).toHaveBeenCalledOnce();
+    expect(rpc).toHaveBeenCalledWith(
+      'stripe_publicar_tarifa',
+      expect.objectContaining({
+        p_cuenta_id: null,
+        p_codigo: codigo,
+        p_importe_centavos: 950,
+        p_price_id: 'price_Basico',
+      }),
+    );
+  });
+
+  it('publica Operación Base como tarifa general sin una cotización', async () => {
+    const codigoBase = 'operacion_base_anual';
+    const tarifaBase = {
+      codigo: codigoBase,
+      nombre: 'Operación Base',
+      periodicidad: 'anual',
+      moneda: 'USD',
+      importe_sugerido_centavos: null,
+      importe_centavos: null,
+    };
+    const stripe = {
+      createPrice: vi.fn().mockResolvedValue({
+        id: 'price_Base',
+        product: 'prod_Base',
+        livemode: false,
+        active: true,
+        type: 'recurring',
+        billing_scheme: 'per_unit',
+        unit_amount: 950,
+        currency: 'usd',
+        recurring: { interval: 'year', interval_count: 1, usage_type: 'licensed' },
+      }),
+    };
+    const { app, rpc } = fixture(
+      {
+        sesion,
+        stripe_leer: () => ({ tarifas: [tarifaBase] }),
+        stripe_preparar_tarifa: () => ({ periodicidad: 'anual' }),
+      },
+      { stripe, stripeProducts: { operacion_base: 'prod_Base' } },
+    );
+    const consulta = await request(app)
+      .get(tarifas)
+      .set('Authorization', bearer('aal2'))
+      .expect(200);
+    expect(consulta.body.data.tarifas).toEqual([tarifaBase]);
+    await request(app)
+      .patch(`${tarifas}/${codigoBase}`)
+      .set('Authorization', bearer('aal2'))
+      .send(cambio)
+      .expect(204);
+    expect(stripe.createPrice).toHaveBeenCalledWith(
+      expect.objectContaining({ product: 'prod_Base', recurring: { interval: 'year' } }),
+      expect.any(String),
+    );
+    expect(rpc).toHaveBeenCalledWith(
+      'stripe_publicar_tarifa',
+      expect.objectContaining({
+        p_cuenta_id: null,
+        p_codigo: codigoBase,
+        p_price_id: 'price_Base',
+      }),
+    );
+  });
+
+  it('requiere cuatro cupos explícitos y versiona cada edición de una cotización de Avanzada', async () => {
+    const cotizacion = '/api/admin/cuentas/5/cotizaciones-stripe';
+    const avanzada = 'gestion_comunitaria_avanzada_mensual';
+    const propuesta = { envejecientes: 30, usuarios: 40, cuidadores: 25, familiares: null };
+    const versionAnterior = '783ae9ab-9ce2-4da5-90c1-98dad6a1e73b';
+    const stripe = {
+      createPrice: vi.fn().mockResolvedValue({
+        id: 'price_Avanzada',
+        product: 'prod_Avanzada',
+        livemode: false,
+        active: true,
+        type: 'recurring',
+        billing_scheme: 'per_unit',
+        unit_amount: 950,
+        currency: 'usd',
+        recurring: { interval: 'month', interval_count: 1, usage_type: 'licensed' },
+      }),
+    };
+    const preparar = vi.fn().mockReturnValue({
+      periodicidad: 'mensual',
+      version_actual: versionAnterior,
+      sin_cambios: false,
+    });
+    const { app, rpc } = fixture(
+      { sesion, stripe_preparar_tarifa: preparar },
+      { stripe, stripeProducts: { gestion_comunitaria_avanzada: 'prod_Avanzada' } },
+    );
+    const publicar = (codigo, body) =>
+      request(app).patch(`${cotizacion}/${codigo}`).set('Authorization', bearer('aal2')).send(body);
+    await publicar('operacion_base_mensual', { ...cambio, limites: propuesta }).expect(422);
+    await publicar(avanzada, cambio).expect(422);
+    await publicar(avanzada, { ...cambio, limites: { ...propuesta, cuidadores: 0 } }).expect(422);
+    await publicar(avanzada, { ...cambio, limites: { ...propuesta, usuarios: 100001 } }).expect(
+      422,
+    );
+    expect(preparar).not.toHaveBeenCalled();
+    expect(stripe.createPrice).not.toHaveBeenCalled();
+
+    const desactualizada = await publicar(avanzada, {
+      ...cambio,
+      limites: propuesta,
+      version: null,
+    }).expect(409);
+    expect(desactualizada.body.error.code).toBe('QUOTE_UPDATED');
+    expect(stripe.createPrice).not.toHaveBeenCalled();
+
+    await publicar(avanzada, { ...cambio, limites: propuesta, version: versionAnterior }).expect(
+      204,
+    );
+    await publicar(avanzada, { ...cambio, limites: propuesta }).expect(204);
+    await publicar(avanzada, { ...cambio, limites: { ...propuesta, cuidadores: 26 } }).expect(204);
+    expect(stripe.createPrice.mock.calls[0][1]).toBe(stripe.createPrice.mock.calls[1][1]);
+    expect(stripe.createPrice.mock.calls[0][1]).not.toBe(stripe.createPrice.mock.calls[2][1]);
+    expect(rpc).toHaveBeenCalledWith(
+      'stripe_preparar_tarifa',
+      expect.objectContaining({
+        p_cuenta_id: '5',
+        p_codigo: avanzada,
+        p_limites: propuesta,
+        p_importe_centavos: 950,
+      }),
+    );
+    expect(rpc).toHaveBeenCalledWith(
+      'stripe_publicar_tarifa',
+      expect.objectContaining({
+        p_cuenta_id: '5',
+        p_codigo: avanzada,
+        p_limites: propuesta,
+        p_version_esperada: versionAnterior,
+        p_price_id: 'price_Avanzada',
+      }),
+    );
+
+    preparar.mockReturnValueOnce({
+      periodicidad: 'mensual',
+      version_actual: versionAnterior,
+      sin_cambios: true,
+    });
+    await publicar(avanzada, { ...cambio, limites: propuesta, version: null }).expect(204);
+    expect(stripe.createPrice).toHaveBeenCalledTimes(3);
+  });
+});
+
 describe('Backoffice y PWA aislados', () => {
+  it('retira la asignación de plan gratuito aun para un administrador con MFA', async () => {
+    const { app, rpc } = fixture({ sesion: () => ({ estado: 'ok', rol: 'super_admin' }) });
+    await request(app)
+      .post('/api/admin/cuentas/5/plan-gratuito')
+      .set('Authorization', bearer('aal2'))
+      .send({ motivo: 'Asignación retirada' })
+      .expect(404);
+    expect(rpc.mock.calls.some(([name]) => name === 'stripe_plan_gratuito')).toBe(false);
+  });
+
   it('exige un JWT y audita las acciones denegadas al auditor', async () => {
     const { app, rpc } = fixture();
     await request(app).get('/api/admin/cuentas').expect(401);

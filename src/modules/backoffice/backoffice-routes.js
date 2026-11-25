@@ -7,6 +7,7 @@ import { AppError, unavailable } from '../../lib/errors.js';
 import { brandUrl, prepareLogo } from './backoffice-brand.js';
 import { createBackofficeRepository } from './backoffice-repository.js';
 import { backofficeClaims, requireBackoffice, requireRole } from './require-backoffice.js';
+import { montarPreciosStripe } from '../suscripciones/suscripciones-backoffice.js';
 import {
   credenciales,
   edit,
@@ -57,7 +58,7 @@ function stream(res, adminGateway, temas, duration) {
   });
 }
 
-export function createBackofficeRouter({ env, gateway, adminGateway, recordLog }) {
+export function createBackofficeRouter({ env, gateway, adminGateway, recordLog, stripe }) {
   const router = Router();
   const repository = createBackofficeRepository(adminGateway);
   const limited = rateLimit({
@@ -149,6 +150,7 @@ export function createBackofficeRouter({ env, gateway, adminGateway, recordLog }
     return cuenta;
   };
   router.get('/me', (_req, res) => res.json({ data: context(res).profile }));
+  montarPreciosStripe(router, { env, adminGateway, stripe, repository });
   for (const [path, action] of [
     ['ingreso', 'ingreso'],
     ['actividad', 'actividad'],
@@ -304,6 +306,7 @@ export function createBackofficeRouter({ env, gateway, adminGateway, recordLog }
     edit({
       adultos: z.int().min(1).max(100000).nullable(),
       usuarios: z.int().min(1).max(100000).nullable(),
+      cuidadores: z.int().min(1).max(100000).optional(),
     }),
     (req) => ({ id: parse(id, req.params.id) }),
   );

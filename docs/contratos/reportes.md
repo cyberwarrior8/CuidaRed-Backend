@@ -44,6 +44,7 @@ Los estados son los del backend, no los del simulador del frontend:
 | Familiar, Voluntario                 | No (403)         | No (403)                            | No (403)                                             | No (403)                           |
 
 - La Familia en prueba no tiene `dashboard_metricas`: sus reportes responden 403 aunque el Coordinador tenga `reportes:ver`. La Organización en prueba sí lo tiene. Ningún plan de prueba incluye `reportes_avanzados`.
+- Cuidado Integral (Familia) y Gestión Comunitaria Avanzada (Organización) incluyen Excel y el análisis avanzado. Los reportes y exportaciones conservan los permisos por rol. [CUIDARED-016](../CAMBIOS-SCHEMA-CUIDARED.md#cuidared-016--excel-y-análisis-avanzado-en-cuidado-integral)
 - El reporte de **visitas** exige además `visitas:ver`. Desde el 19/11/2026 Visitas es exclusivo de Organización, por lo que en Familia ese reporte responde 403 (D05). **Propuesta técnica (D20).**
 - **Alcance del Cuidador en el informe:** vínculo `cuidador_asignado` no revocado y perfil de cuidador vigente (`cuidador.fecha_fin is null`), las mismas reglas de `cuidared_interno.alcanza_envejeciente` que usan los demás módulos. Un adulto de otra cuenta, inexistente, fuera de alcance o con consentimiento retirado responde igual: 404 `NOT_FOUND`.
 - Administrador y Coordinador alcanzan todos los adultos de su cuenta; los reportes y el resumen nunca incluyen datos de otra cuenta. Los adultos con consentimiento retirado quedan fuera de todos los cálculos.

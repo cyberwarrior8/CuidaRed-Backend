@@ -18,7 +18,7 @@ insert into cuidared.plan (nombre, plan_categoria_id, tipo_cuenta_id, precio, pe
 select v.nombre, pc.plan_categoria_id, t.tipo_cuenta_id, v.precio, 'mensual', 30, v.env, v.usu, v.fam, v.resumen
 from (values
   ('Básico Familiar', 'Básico', 'familia', 650, 2, null, 3,
-   'Hasta 2 adultos mayores y 3 familiares, cuidadores sin límite, alertas estándar y visitas recurrentes.'),
+   'Hasta 2 adultos mayores y 3 familiares, múltiples cuidadores y gestión de necesidades.'),
   ('Cuidado Integral', 'Premium', 'familia', 1450, 6, null, null,
    'Hasta 6 adultos mayores, familiares y cuidadores sin límite, alertas críticas, historial inmutable y métricas.'),
   ('Operación Base', 'Básico', 'organizacion', 3500, 15, 20, null,
@@ -28,6 +28,7 @@ from (values
 ) as v(nombre, categoria, tipo, precio, env, usu, fam, resumen)
 join cuidared.plan_categoria pc on pc.nombre = v.categoria
 join cuidared.tipo_cuenta t on t.codigo = v.tipo
+where not exists (select 1 from cuidared.plan p where p.nombre = v.nombre)
 on conflict (nombre) do nothing;
 
 insert into cuidared.plan_funcionalidad (plan_id, funcionalidad)

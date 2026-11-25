@@ -34,14 +34,28 @@ import { createLoggingMiddleware, createSystemLogger } from './lib/system-logger
 import { auditAccess } from './modules/backoffice/backoffice-audit.js';
 import { createPublicoRouter } from './modules/publico/publico-routes.js';
 import { createReportesRouter } from './modules/reportes/reportes-routes.js';
+import {
+  createStripeWebhookRouter,
+  createSuscripcionesRouter,
+} from './modules/suscripciones/suscripciones-routes.js';
 
-export function createApp({ env, gateway, audit, adminGateway = null, now = () => new Date() }) {
+export function createApp({
+  env,
+  gateway,
+  audit,
+  adminGateway = null,
+  stripe = null,
+  stripeSystemRpc = null,
+  now = () => new Date(),
+}) {
   const recordLog = createSystemLogger(adminGateway, audit);
   const deps = {
     env,
     gateway,
     audit,
     adminGateway,
+    stripe,
+    stripeSystemRpc,
     now,
     recordLog,
     auditAccess: auditAccess(adminGateway, audit),
@@ -85,6 +99,8 @@ export function createApp({ env, gateway, audit, adminGateway = null, now = () =
         next(new AppError(429, 'RATE_LIMITED', 'Espera un momento antes de intentar de nuevo.')),
     }),
   );
+  // Stripe firma los bytes originales. Este router consume su cuerpo antes del analizador JSON.
+  app.use('/api/v1/webhooks/stripe', createStripeWebhookRouter(deps));
   // Un lote de sync con observaciones y necesidades puede superar 16 kB; solo esa ruta admite más. Si el analizador
   // de la ruta ya leyó el cuerpo, el global no vuelve a leerlo.
   app.use('/api/v1/cuentas/:cuentaId/sync', express.json({ limit: '256kb', strict: true }));
@@ -122,6 +138,7 @@ export function createApp({ env, gateway, audit, adminGateway = null, now = () =
   enCuenta.use(createNecesidadesRouter(deps));
   enCuenta.use(createAlertasRouter(deps));
   enCuenta.use(createReportesRouter(deps));
+  enCuenta.use(createSuscripcionesRouter(deps));
   enCuenta.use(createSyncRouter(deps));
   api.use('/cuentas/:cuentaId', enCuenta);
   app.use('/api/v1', api);
@@ -132,6 +149,8 @@ export function createApp({ env, gateway, audit, adminGateway = null, now = () =
       error = new AppError(400, 'INVALID_JSON', 'JSON inválido.');
     if (err.type === 'entity.too.large')
       error = new AppError(413, 'BODY_TOO_LARGE', 'Solicitud demasiado grande.');
+    if (err.type === 'encoding.unsupported')
+      error = new AppError(415, 'UNSUPPORTED_ENCODING', 'Codificación no admitida.');
     const known = error instanceof AppError;
     const status = known ? error.status : 500;
     const code = known ? error.code : 'INTERNAL_ERROR';

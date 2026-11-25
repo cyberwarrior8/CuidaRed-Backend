@@ -1,6 +1,6 @@
 /* Valida las propuestas SQL en un PostgreSQL LOCAL desechable · herramientas. © 2026 Equipo CuidaRed – INTEC. */
 /*
- * Uso: node scripts/validar-propuestas-local.js [--conservar] [--solo=2b,3a|--solo=integracion|--solo=cierre|--solo=fases-5-6|--solo=web-push|--solo=visitas|--solo=reportes]
+ * Uso: node scripts/validar-propuestas-local.js [--conservar] [--solo=2b,3a|--solo=integracion|--solo=cierre|--solo=fases-5-6|--solo=web-push|--solo=visitas|--solo=reportes|--solo=suscripciones]
  * Requiere `psql` en el PATH y un PostgreSQL local accesible con las variables estándar (PGHOST, PGUSER,
  * PGPASSWORD…; por defecto localhost/postgres). Crea la base `cuidared_validacion_local`, carga en orden:
  *   1. docs/verificacion/local/supabase-stub.sql  (esquema auth y roles simulados)
@@ -10,8 +10,8 @@
  *   5. docs/propuestas/fase-2a-* a fase-4d-*      (bloques de esquema, sin la carga territorial), en orden
  *   6. docs/verificacion/local/pruebas-*.sql      (cada una dentro de una transacción con ROLLBACK)
  * y borra la base al final (salvo --conservar). NUNCA apunta al proyecto Supabase: se niega si PGHOST no es local.
- * --solo=reportes (fase 7) carga TODAS las migraciones aplicadas, salvo las dos que solo programan Supabase Cron,
- * con los metadatos simulados que necesitan; después, las propuestas pendientes de fase 7 y pruebas-7-*.sql.
+ * --solo=reportes y --solo=suscripciones cargan las migraciones aplicadas disponibles, salvo las de Cron,
+ * con los metadatos simulados que necesitan; luego, la propuesta y las pruebas de la fase correspondiente.
  */
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -35,7 +35,9 @@ const fasesCincoSeis = soloArg === '--solo=fases-5-6';
 const webPush = soloArg === '--solo=web-push';
 const soloVisitas = soloArg === '--solo=visitas';
 const soloReportes = soloArg === '--solo=reportes';
-const baseDeAlertas = fasesCincoSeis || webPush || soloVisitas || soloReportes;
+const soloSuscripciones = soloArg === '--solo=suscripciones';
+const baseActual = soloReportes || soloSuscripciones;
+const baseDeAlertas = fasesCincoSeis || webPush || soloVisitas || baseActual;
 const soloIntegracion = !soloArg || soloArg === '--solo=integracion';
 const solo =
   soloArg && !soloIntegracion && !soloCierre && !baseDeAlertas
@@ -47,9 +49,14 @@ const migracionVisitas = (nombre) =>
     nombre,
   );
 const migracionReportes = (nombre) => /^\d{14}_fase_7_reportes_cuidared_012\.sql$/.test(nombre);
+const migracionSuscripciones = (nombre) =>
+  /^\d{14}_fase_8(?:(?:_suscripciones|b_backoffice)_cuidared_013|c_retirar_plan_gratuito_cuidared_014|d_catalogo_cupos_cuidared_015|e_reportes_integral_cuidared_016|f_planes_organizacion_cuidared_017|g_version_tarifas_stripe_cuidared_018)\.sql$/.test(
+    nombre,
+  );
 const esMigracionPosterior = (nombre) =>
   migracionVisitas(nombre) ||
   migracionReportes(nombre) ||
+  migracionSuscripciones(nombre) ||
   /^\d{14}_(?:backoffice(?:_tareas|_alertas_compatibilidad|_prueba_siete_dias)?|(?:fases_5_y_6|cron_alertas)_cuidared_009|web_push_cuidared_010|alertas_necesidades_prioritarias_cuidared_011)\.sql$/.test(
     nombre,
   );
@@ -63,8 +70,8 @@ const esMigracionBase = (nombre) =>
 const esPruebaSeleccionada = (n) =>
   /^pruebas-.*\.sql$/.test(n) &&
   (n === 'pruebas-00-ayudas.sql' ||
-    (soloReportes
-      ? /^pruebas-7-.*\.sql$/.test(n)
+    (baseActual
+      ? (soloReportes ? /^pruebas-7-.*\.sql$/ : /^pruebas-8[a-z]?-.*\.sql$/).test(n)
       : soloVisitas
         ? /^pruebas-visitas-(?:publicas|seguimiento|institucionales)\.sql$/.test(n)
         : webPush
@@ -148,20 +155,34 @@ try {
       'metadatos previos de Supabase para las fases 5 y 6',
     );
   }
-  if (soloReportes) {
+  if (baseActual) {
     ejecutarArchivo(
       join(raiz, 'docs/verificacion/local/datos-previos-reportes.sql'),
       'metadatos previos de Supabase Auth para el backoffice',
     );
     for (const f of ordenados(
       join(raiz, 'supabase/migrations'),
-      (nombre) => esMigracionPosterior(nombre) && !soloProgramaCron(nombre),
+      (nombre) =>
+        esMigracionPosterior(nombre) &&
+        !soloProgramaCron(nombre) &&
+        (soloSuscripciones || !migracionSuscripciones(nombre)),
     ))
       ejecutarArchivo(f, f.slice(raiz.length));
   }
   for (const f of ordenados(join(raiz, 'docs/propuestas'), (n) =>
-    soloReportes
-      ? /^fase-7[a-z]?-.*\.sql$/.test(n) && n !== 'fase-7-reportes.sql'
+    baseActual
+      ? soloReportes
+        ? /^fase-7[a-z]?-.*\.sql$/.test(n) && n !== 'fase-7-reportes.sql'
+        : /^fase-8[a-z]?-.*\.sql$/.test(n) &&
+          ![
+            'fase-8-suscripciones.sql',
+            'fase-8b-backoffice.sql',
+            'fase-8c-retirar-plan-gratuito.sql',
+            'fase-8d-catalogo-cupos.sql',
+            'fase-8e-reportes-integral.sql',
+            'fase-8f-planes-organizacion.sql',
+            'fase-8g-version-tarifas-stripe.sql',
+          ].includes(n)
       : baseDeAlertas
         ? /^fase-[56][a-z]?-.*\.sql$/.test(n)
         : /^fase-(2[abc]|3[ab]|4[abcd])-.*\.sql$/.test(n) && incluido(n.slice(5)),
