@@ -14,7 +14,7 @@ const token = (aal = 'aal1') =>
   Buffer.from(JSON.stringify({ sub: actor, session_id: session, aal })).toString('base64url') +
   '.firma';
 const bearer = (aal) => 'Bearer ' + token(aal);
-function fixture(handlers = {}, { stripe, stripeProducts } = {}) {
+function fixture(handlers = {}, { stripe, stripeProducts, ...environment } = {}) {
   const rpc = vi.fn(async (name, args) => {
     if (name in handlers) return handlers[name](args);
     if (name === 'sesion') return { estado: 'ok', rol: 'auditor', usuario_id: actor };
@@ -34,6 +34,7 @@ function fixture(handlers = {}, { stripe, stripeProducts } = {}) {
       origins: ['http://localhost:5174'],
       SUPABASE_URL: 'https://test.supabase.co',
       stripeProducts,
+      ...environment,
     },
     gateway,
     adminGateway: { backofficeRpc: rpc },
@@ -262,6 +263,82 @@ describe('Backoffice y PWA aislados', () => {
     expect(rpc.mock.calls.some(([name]) => name === 'stripe_plan_gratuito')).toBe(false);
   });
 
+  it.each(['super_admin', 'soporte', 'auditor'])(
+    'supervisa los módulos como %s sin publicar configuración privada',
+    async (rol) => {
+      const { app, rpc } = fixture(
+        {
+          sesion: () => ({ estado: 'ok', rol }),
+          supervision: () => ({ solicitudes: { pendientes: 3 }, correos: [] }),
+        },
+        {
+          VISITAS_CORREO_HABILITADO: false,
+          VISITAS_CORREO_PROVEEDOR: 'smtp',
+          VISITAS_CORREO_REMITENTE: 'piloto@example.test',
+          VISITAS_SMTP_HOST: 'smtp.example.test',
+          VISITAS_SMTP_USUARIO: 'piloto@example.test',
+          VISITAS_SMTP_PASSWORD: 'no-exponer-en-la-respuesta',
+          PWA_ORIGIN: 'https://pwa.example.test',
+        },
+      );
+      const res = await request(app)
+        .get('/api/admin/supervision?meses=12')
+        .set('Authorization', bearer('aal2'))
+        .expect(200);
+      expect(res.body.data.servicios.correo).toEqual({
+        habilitado: false,
+        configurado: true,
+        proveedor: 'smtp',
+      });
+      expect(JSON.stringify(res.body)).not.toMatch(/no-exponer|piloto@example|smtp.example/);
+      expect(rpc).toHaveBeenCalledWith(
+        'supervision',
+        expect.objectContaining({ p_actor: actor, p_sesion: session, p_aal: 'aal2', p_meses: 12 }),
+      );
+    },
+  );
+  it('deniega el seguimiento anónimo y rechaza filtros que intenten cambiar su alcance', async () => {
+    const { app, rpc } = fixture();
+    await request(app).get('/api/admin/supervision').expect(401);
+    await request(app)
+      .get('/api/admin/supervision?meses=60')
+      .set('Authorization', bearer())
+      .expect(422);
+    await request(app)
+      .get('/api/admin/supervision?usuario=otro')
+      .set('Authorization', bearer())
+      .expect(422);
+    expect(rpc.mock.calls.some(([name]) => name === 'supervision')).toBe(false);
+  });
+  it('valida la vista previa del logo sin guardarlo ni publicarlo', async () => {
+    const { app, rpc } = fixture({ sesion: () => ({ estado: 'ok', rol: 'super_admin' }) });
+    const image =
+      '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="40"><circle cx="24" cy="20" r="12" fill="blue"/></svg>';
+    const res = await request(app)
+      .post('/api/admin/logos/completo_claro/validar')
+      .set('Authorization', bearer('aal2'))
+      .set('Content-Type', 'image/svg+xml')
+      .send(image)
+      .expect(200);
+    expect(res.headers['content-type']).toContain('image/png');
+    expect(res.headers['cache-control']).toBe('no-store');
+    expect(rpc.mock.calls.some(([name]) => name === 'mutar')).toBe(false);
+    await request(app)
+      .post('/api/admin/logos/completo_claro/validar')
+      .set('Authorization', bearer('aal2'))
+      .set('Content-Type', 'image/svg+xml')
+      .send('<svg><script>alert(1)</script></svg>')
+      .expect(422);
+  });
+  it.each(['soporte', 'auditor'])('impide validar logos desde el rol %s', async (rol) => {
+    const { app } = fixture({ sesion: () => ({ estado: 'ok', rol }) });
+    await request(app)
+      .post('/api/admin/logos/completo_claro/validar')
+      .set('Authorization', bearer())
+      .set('Content-Type', 'image/png')
+      .send(Buffer.from('no-es-un-logo'))
+      .expect(403);
+  });
   it('exige un JWT y audita las acciones denegadas al auditor', async () => {
     const { app, rpc } = fixture();
     await request(app).get('/api/admin/cuentas').expect(401);

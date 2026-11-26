@@ -44,6 +44,7 @@ export function createBackofficeRepository(adminGateway) {
       rpc('sesion', { ...session(context), p_accion: action, ...auditContext(req) }),
     read: (context, resource, filters = {}) =>
       rpc('leer', { ...session(context), p_recurso: resource, p_filtros: filters }),
+    supervision: (context, meses) => rpc('supervision', { ...session(context), p_meses: meses }),
     mutate: (context, action, data, motivo, req) =>
       rpc('mutar', {
         ...session(context),

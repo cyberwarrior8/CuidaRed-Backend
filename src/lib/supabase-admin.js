@@ -87,7 +87,15 @@ export function createAdminGateway(env, fetchImpl = globalThis.fetch) {
   const backofficeRpc = async (name, args) => {
     if (!/^[a-z_]+$/.test(name)) throw new Error('RPC administrativa inválida.');
     const validatingSession = name === 'sesion' && args?.p_accion === 'validar';
-    const read = name === 'leer' || name === 'eventos' || validatingSession;
+    const read =
+      [
+        'leer',
+        'eventos',
+        'supervision',
+        'soporte_leer',
+        'eliminacion_leer',
+        'eliminacion_estado',
+      ].includes(name) || validatingSession;
     const rpc = () => admin.rpc('api_bo_' + name, args).retry(false);
     const attempt = () => (read ? rpc().abortSignal(AbortSignal.timeout(5000)) : rpc());
     let result = await attempt();
@@ -142,6 +150,10 @@ export function createAdminGateway(env, fetchImpl = globalThis.fetch) {
 
   return {
     evidenciaVisitante: storageVisitante(admin),
+    async deleteUser(id) {
+      const { error } = await admin.auth.admin.deleteUser(id, false);
+      if (error) throw unavailable();
+    },
     async resendInvitation({ id, email }) {
       const { data, error } = await admin.auth.admin.getUserById(id);
       if (error || !data.user) throw unavailable();

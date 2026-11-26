@@ -7,15 +7,6 @@
 - El PR selecciona únicamente visitas y sus dependencias de correo: SMTP con Nodemailer, diagnóstico, migraciones de recepción/buzón y confirmación/aportes. Los cambios locales de soporte y supervisión permanecen fuera del PR. No se incluyen archivos de entorno, credenciales, fotografías ni artefactos de pruebas.
 - Verificación tras la combinación: ESLint y 1.375 pruebas aprobadas. La copia exacta del PR pasó 1.349 pruebas en 29 archivos. La entrega real de correos sigue pendiente de la contraseña de aplicación del dueño del Gmail.
 
-## 23/11/2026 — Contacto externo, aportes y confirmación de visitas
-
-- `src/modules/visitas/` incorpora contacto personal/institucional en programación, referencia de seguimiento generada en el servidor y confirmación positiva/negativa por Administrador o Coordinador después del fin. Registrar en campo conserva el informe pendiente; solo confirmar una realización modifica la última visita efectiva. La cuenta Familia permanece excluida.
-- `src/modules/publico/` exige correo y fin de horario y permite observaciones desde el inicio de la visita. Las fotografías se validan, normalizan y guardan en un bucket privado, con cuotas e idempotencia. `src/app.js` amplía el límite JSON únicamente para esta carga; `src/lib/supabase-admin.js` limita las operaciones de Storage y RPC al alcance previsto.
-- `avisos-visita.js` añade aviso al inicio con enlace a aportes, código reconstruido por HMAC y confirmación de realización. Los rechazos conservan el motivo. No se cambia el remitente ni se activa una cola sin credenciales.
-- Aplicada en Supabase la migración `20261124032710_visitas_confirmacion_observaciones_evidencias` bajo la autorización previa del usuario. [Registro de esquema, permisos, alcance y comprobaciones](docs/CAMBIOS-SCHEMA-VISITAS.md).
-- Validación: 1.341 pruebas en 28 archivos, ESLint global y Prettier de los archivos de esta entrega correctos. La prueba HTTP verifica la carga de fotografía mayor de 16 KB manteniendo el límite general para consultas y descargas. La prueba SQL alojada con datos sintéticos y ROLLBACK pasó programación, rechazo, avisos, aportes, aislamiento, confirmación positiva/negativa, fechas efectivas y exclusión de Familia/Cuidador. Se actualizan las pruebas SQL locales al nuevo contrato y su selector de migraciones; no se ejecutó esa batería local porque falta PostgreSQL/psql.
-- Pendiente externo: `npm run visitas:correo` detecta que falta la contraseña de aplicación del Gmail y la cola está pausada. [Pasos exclusivos del propietario](docs/ACTIVAR-CORREO-PROYECTO.md). No se enviaron correos ni se cargaron fotografías reales. Sin commits ni push en esta entrega.
-
 ## 25/11/2026 — Revisión de la compra y pruebas de Stripe
 
 - `src/modules/suscripciones/` conserva el indicador de plan cotizable en el catálogo y devuelve mensajes específicos si vence Checkout o si un intento incierto sigue reservado. Se mantiene la clave de idempotencia del mismo intento al reintentar con Stripe.
@@ -45,13 +36,13 @@
 
 - `src/modules/suscripciones/` consulta el catálogo desde el servidor, separado de las ofertas publicadas en Stripe Sandbox.
 - Backoffice guarda y audita el cupo de Básico Familiar. Cinco cuidadores activos es el valor inicial, también para la prueba de Familia. El servidor limita altas y cambios de rol al sumar una plaza.
-- El cambio de base se registra en [CUIDARED-015](docs/CAMBIOS-SCHEMA-CUIDARED.md#cuidared-015--catálogo-dinámico-y-cupo-de-cuidadores).
+- El cambio de base se registra en [CUIDARED-015](docs/CAMBIOS-SCHEMA-SUSCRIPCIONES.md#cuidared-015--catálogo-dinámico-y-cupo-de-cuidadores).
 - Se aplicó en Supabase como `20261123031023`. La verificación incluyó 29 pruebas HTTP de Suscripción y Backoffice, pruebas SQL aisladas y la comprobación de valores y permisos en Supabase.
 
 ## 22/11/2026 — Retiro del plan gratuito
 
 - Se retiró el endpoint administrativo de asignación de plan gratuito de `src/modules/suscripciones/`. Las pruebas vencidas quedan fuera de los módulos operativos salvo una vigencia pagada confirmada.
-- Supabase aplicó y verificó CUIDARED-014 como `20261123024158`. Se archivaron los planes gratuitos y las dos familias afectadas quedaron sin plan y con suscripción vencida. Sus fechas de prueba se conservaron y los ajustes quedaron auditados. [Cambios de esquema](docs/CAMBIOS-SCHEMA-CUIDARED.md#cuidared-014--retiro-del-plan-gratuito-de-backoffice)
+- Supabase aplicó y verificó CUIDARED-014 como `20261123024158`. Se archivaron los planes gratuitos y las dos familias afectadas quedaron sin plan y con suscripción vencida. Sus fechas de prueba se conservaron y los ajustes quedaron auditados. [Cambios de esquema](docs/CAMBIOS-SCHEMA-SUSCRIPCIONES.md#cuidared-014--retiro-del-plan-gratuito-de-backoffice)
 - Validación completada con 28 pruebas HTTP de suscripción y Backoffice, pruebas de PostgreSQL aislado y compilación de Backoffice.
 
 ## 22/11/2026 — Fase 8, suscripciones y pagos de prueba
@@ -60,8 +51,39 @@
 - El webhook conserva los bytes firmados, valida el modo Sandbox y la relación entre cuenta y objetos del proveedor. La base registra un solo pago por factura y aplica la vigencia tras conciliación.
 - El flujo de titularidad programa primero el fin de la renovación asociada a la persona saliente. Las facturas históricas mantienen al pagador original.
 - Se incorporaron tarifas en USD y cotizaciones por cuenta desde Backoffice. El primer despliegue desactivó la asignación automática del plan gratuito. El retiro posterior se registra en CUIDARED-014.
-- Se prepararon el importador de los cuatro Price familiares, las pruebas HTTP y SQL y la documentación de operación. Supabase registró las migraciones `20261123013059` y `20261123013142` tras la aprobación del usuario. [Registro de esquema](docs/CAMBIOS-SCHEMA-CUIDARED.md#cuidared-013--suscripciones-y-pagos-de-prueba-fase-8) · [Contrato de suscripciones](docs/contratos/suscripciones.md) · [Guía Sandbox](docs/FASE-8-SANDBOX.md)
+- Se prepararon el importador de los cuatro Price familiares, las pruebas HTTP y SQL y la documentación de operación. Supabase registró las migraciones `20261123013059` y `20261123013142` tras la aprobación del usuario. [Registro de esquema](docs/CAMBIOS-SCHEMA-SUSCRIPCIONES.md#cuidared-013--suscripciones-y-pagos-de-prueba-fase-8) · [Contrato de suscripciones](docs/contratos/suscripciones.md) · [Guía Sandbox](docs/FASE-8-SANDBOX.md)
 - Validación local del backend: ESLint, 1.300 pruebas Vitest/Supertest y los dos bloques SQL en PostgreSQL aislado. La prueba de pago conectada queda pendiente de configurar el sandbox y publicar el catálogo.
+
+## 23/11/2026 — Contacto externo, aportes y confirmación de visitas
+
+- `src/modules/visitas/` incorpora contacto personal/institucional en programación, referencia de seguimiento generada en el servidor y confirmación positiva/negativa por Administrador o Coordinador después del fin. Registrar en campo conserva el informe pendiente; solo confirmar una realización modifica la última visita efectiva. La cuenta Familia permanece excluida.
+- `src/modules/publico/` exige correo y fin de horario y permite observaciones desde el inicio de la visita. Las fotografías se validan, normalizan y guardan en un bucket privado, con cuotas e idempotencia. `src/app.js` amplía el límite JSON únicamente para esta carga; `src/lib/supabase-admin.js` limita las operaciones de Storage y RPC al alcance previsto.
+- `avisos-visita.js` añade aviso al inicio con enlace a aportes, código reconstruido por HMAC y confirmación de realización. Los rechazos conservan el motivo. No se cambia el remitente ni se activa una cola sin credenciales.
+- Aplicada en Supabase la migración `20261124032710_visitas_confirmacion_observaciones_evidencias` bajo la autorización previa del usuario. [Registro de esquema, permisos, alcance y comprobaciones](docs/CAMBIOS-SCHEMA-VISITAS.md).
+- Validación: 1.341 pruebas en 28 archivos, ESLint global y Prettier de los archivos de esta entrega correctos. La prueba HTTP verifica la carga de fotografía mayor de 16 KB manteniendo el límite general para consultas y descargas. La prueba SQL alojada con datos sintéticos y ROLLBACK pasó programación, rechazo, avisos, aportes, aislamiento, confirmación positiva/negativa, fechas efectivas y exclusión de Familia/Cuidador. Se actualizan las pruebas SQL locales al nuevo contrato y su selector de migraciones; no se ejecutó esa batería local porque falta PostgreSQL/psql.
+- Pendiente externo: `npm run visitas:correo` detecta que falta la contraseña de aplicación del Gmail y la cola está pausada. [Pasos exclusivos del propietario](docs/ACTIVAR-CORREO-PROYECTO.md). No se enviaron correos ni se cargaron fotografías reales. Sin commits ni push en esta entrega.
+
+## 23/11/2026 — Actualización local desde Integracion
+
+- Pull por avance directo hasta `b7e89a2`, con la fase 7 de reportes y sus correcciones. Se conserva el trabajo local de correo, soporte y backoffice, incluidas las eliminaciones documentales que ya estaban pendientes.
+- `scripts/validar-propuestas-local.js` combina la selección nueva de reportes con las migraciones locales del backoffice y las pruebas de avisos de visitas. `src/app.js` conserva los routers de Reportes y Soporte.
+- Se conciliaron ambos historiales sin descartar entradas. El respaldo previo permanece en el stash local `respaldo-local-antes-pull-integracion-2026-11-23`; los archivos `.env` no cambiaron. No se crearon commits de desarrollo, no se hizo push ni se aplicaron migraciones.
+- Verificación: 1.322 pruebas en 27 archivos aprobadas, ESLint global correcto y comprobación de sintaxis del validador correcta. La primera ejecución restringida no pudo conectar a localhost (EACCES); la repetición con acceso a los servidores locales de prueba pasó.
+
+## 22/11/2026 — Solicitudes de soporte y eliminación de usuarios
+
+- `src/modules/soporte/` incorpora solicitudes por cuenta, respuestas, seguimiento y eliminación privilegiada. Las rutas de la organización comprueban su Administrador; las administrativas preservan roles dedicados y MFA. `src/lib/event-stream.js` comparte las señales SSE sin datos de negocio con el backoffice.
+- `src/lib/supabase-admin.js` expone la eliminación definitiva oficial de Auth. Se ejecuta después de una preparación validada en la base y se confirma el resultado; los reintentos no duplican una eliminación completada. Los fallos del proveedor no se presentan como éxito.
+- La migración `20261122192350` crea la bandeja, sus RPC privadas, una guarda de eliminación atómica y el listado de miembros inactivos. [Registro de esquema, autorización y alcance](docs/CAMBIOS-SCHEMA-BACKOFFICE.md).
+- Verificación: 1.193 pruebas del backend aprobadas. La prueba SQL alojada con datos sintéticos y ROLLBACK pasó aislamiento, MFA, eliminación, limpieza de sesiones y notificaciones personales, concurrencia de membresía y reutilización del correo. No se eliminaron usuarios reales ni se enviaron correos.
+
+## 21/11/2026 — Supervisión del backoffice y validación de identidad visual
+
+- `src/modules/backoffice/backoffice-routes.js` y `backoffice-repository.js` incorporan la consulta agregada de seguimiento con roles dedicados, periodos validados y estado de servicios sin secretos. `src/lib/supabase-admin.js` permite reintentar esta lectura segura ante fallos transitorios.
+- La previa de logo reutiliza el validador de publicación, devuelve un PNG seguro y no escribe en Storage ni cambia el logo vigente. Solo puede usarla Superadministrador con su sesión verificada.
+- `supabase/migrations/20261121172722_backoffice_supervision_plataforma.sql` quedó aplicada: consulta con acceso exclusivo del servidor e invalidaciones SSE para los módulos operativos. [Registro de esquema, autorización y comprobaciones](docs/CAMBIOS-SCHEMA-BACKOFFICE.md). Se conserva el estado anterior de los avisos de seguridad del proyecto.
+- `scripts/validar-propuestas-local.js` clasifica la nueva migración después de sus dependencias. `tests/backoffice.test.js` cubre permisos, entrada estricta, previa sin publicación y ausencia de secretos.
+- Verificación: 1.174 pruebas aprobadas en 25 archivos; ESLint global correcto y Prettier correcto en los archivos modificados para esta entrega. `format:check` global conserva diferencias en 127 archivos ajenos a esta entrega, que no se reformatean. La integración visual pasó 16 pruebas del backoffice y 69 del frontend, con servicios simulados. No se enviaron correos reales ni se cambiaron credenciales.
 
 ## 21/11/2026 — Correcciones de Reportes y seguimiento por visitas
 
@@ -88,6 +110,29 @@
 - **Por confirmar:** la evaluación de ausencia de visitas (RF-05) no distingue el tipo de cuenta. Como Familia ya no tiene Visitas, sus adultos tendrían una alerta de seguimiento a los 16 días que solo se cierra a mano.
 - **Revisión independiente:** las tendencias se recortan al periodo pedido. Los filtros con valor nulo se aceptan igual en Express y en SQL. Las métricas de visitas del análisis avanzado salen nulas sin `visitas:ver`. Los códigos de catálogo antiguos del informe pueden ser nulos. El CSV neutraliza fórmulas después de espacios y con signos de ancho completo. Las consultas se reescribieron por cuenta en lugar de por adulto.
 - **Validación:** `npm run lint` sin errores, 25 archivos y 1277 pruebas aprobadas, y Prettier en los archivos tocados. `validar:sql` pasó con `--solo=reportes`, `fases-5-6`, `visitas`, `web-push`, `cierre` e `integracion`. Con 2.000 adultos y 6.000 visitas, la consulta más lenta tardó 147 ms; la prueba de carga falla si alguna llega a 1,5 s.
+
+## 19/11/2026 — Buzón administrativo del proyecto y activación por su propietario
+
+- La organización recibe las solicitudes nuevas en su correo de contacto configurado. Si no hay uno, conserva la notificación a gestores activos con correo confirmado. El visitante usa el correo del formulario. La migración `20261120031507_visitas_correo_organizacion.sql` quedó aplicada y verificada localmente y con una transacción alojada revertida.
+- Se configuró el buzón elegido por el usuario como remitente local de Gmail y como contacto de la única Organización de prueba existente. No se crearon usuarios ni se concedieron roles al buzón. La contraseña de aplicación queda pendiente del dueño; el emisor continúa pausado.
+- El dueño solo debe generar una contraseña de aplicación y guardarla en una variable del `.env`. Pasos mínimos en [Activar correo del proyecto](docs/ACTIVAR-CORREO-PROYECTO.md).
+- La configuración del backend es válida y sus dependencias se importan correctamente. Se comprobó una única instancia en el puerto 3000 y respuesta del catálogo público de organizaciones. No se reprodujo el fallo de arranque con la configuración actual.
+
+## 19/11/2026 — Correo de visitas sin dominio propio
+
+- El emisor admite SMTP desde un buzón existente, además de Resend. El proyecto puede probarse con Gmail y una contraseña de aplicación, sin dominio ni registros DNS. El proveedor, remitente y credenciales se configuran solo en el backend.
+- Nodemailer queda fijado en `10.6.0`, con TLS obligatorio, validación de certificados, tiempos de espera, cierre de conexiones y errores sin datos privados. El remitente coincide con la cuenta autenticada. Se documenta la limitación de deduplicación de SMTP ante un corte posterior a la aceptación.
+- El diagnóstico y la prueba manual seleccionan el proveedor configurado. En pausa, el backend puede iniciarse mientras el propietario completa las credenciales. La cola y los avisos para ambas partes se conservan; no se modifica Supabase.
+- La [guía sin dominio](docs/CORREO-VISITAS-SIN-DOMINIO.md) sustituye la preparación de DNS para este entorno de pruebas. La entrega real depende de que el propietario guarde su contraseña de aplicación en el `.env` local.
+- Verificación: 1,167 pruebas aprobadas, análisis estático de los archivos modificados y diagnóstico local correcto en pausa. SMTP se verificó con un transporte simulado; falta la credencial del propietario para probar la entrega real.
+- Tras elegir un remitente institucional se comprobó su proveedor mediante DNS público. La configuración local utiliza Microsoft 365 en el puerto 587 con STARTTLS, pendiente de autenticación autorizada por la institución. La guía distingue esta opción de Gmail; no se ha probado una credencial ni se han enviado mensajes desde esa cuenta.
+
+## 19/11/2026 — Preparación y diagnóstico del correo de visitas
+
+- `VISITAS_CORREO_HABILITADO=0` pausa el procesamiento sin reclamar avisos de Supabase mientras se verifica el dominio en Resend. El valor predeterminado conserva la activación anterior cuando hay credenciales configuradas.
+- `npm run visitas:correo` muestra únicamente el estado de configuración. Con `--enviar-a` envía una prueba explícita, independiente de la cola y sin modificar visitas. Conserva el identificador de Resend para consultar su detalle y diferencia aceptación de entrega.
+- La migración `20261120024229_visitas_avisos_recepcion.sql` añade el acuse al visitante y el aviso a administradores/coordinadores activos de la cuenta con correo confirmado. Conserva idempotencia, privacidad y revalidación de membresías, sin avisos retroactivos. Quedó aplicada y verificada en Supabase con una transacción revertida, sin enviar correos.
+- Se sincronizaron las dependencias con el archivo de bloqueo del último pull. Verificación: 1,157 pruebas del backend, análisis estático y las pruebas SQL locales de visitas. Resend rechazó la prueba real con HTTP 403 mientras el dominio está sin verificar; los envíos automáticos permanecen pausados.
 
 ## 19/11/2026 — Integración de visitas y Backoffice
 

@@ -8,6 +8,9 @@ import { brandUrl, prepareLogo } from './backoffice-brand.js';
 import { createBackofficeRepository } from './backoffice-repository.js';
 import { backofficeClaims, requireBackoffice, requireRole } from './require-backoffice.js';
 import { montarPreciosStripe } from '../suscripciones/suscripciones-backoffice.js';
+import { correoVisitaConfigurado } from '../../config/env.js';
+import { streamSignals as stream } from '../../lib/event-stream.js';
+import { createBackofficeSoporteRouter } from '../soporte/soporte-routes.js';
 import {
   credenciales,
   edit,
@@ -30,33 +33,6 @@ const frontendMessages = {
   'api.error': 'Respuesta de servidor fallida en la PWA',
   'api.network': 'Fallo de red de la PWA',
 };
-
-function stream(res, adminGateway, temas, duration) {
-  if (!adminGateway) throw unavailable();
-  res.status(200).set({
-    'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache, no-transform',
-    'X-Accel-Buffering': 'no',
-  });
-  res.flushHeaders();
-  const send = (tema) => {
-    if (!res.writableEnded && !res.destroyed)
-      res.write('data: ' + JSON.stringify({ tema }) + '\n\n');
-  };
-  send('conexion');
-  const unsubscribe = adminGateway.watchBackoffice((tema) => {
-    if (temas.has(tema)) send(tema);
-  });
-  const heartbeat = setInterval(() => {
-    if (!res.writableEnded && !res.destroyed) res.write(': latido\n\n');
-  }, 15000);
-  const timeout = setTimeout(() => res.end(), duration);
-  res.on('close', () => {
-    unsubscribe();
-    clearInterval(heartbeat);
-    clearTimeout(timeout);
-  });
-}
 
 export function createBackofficeRouter({ env, gateway, adminGateway, recordLog, stripe }) {
   const router = Router();
@@ -143,6 +119,7 @@ export function createBackofficeRouter({ env, gateway, adminGateway, recordLog, 
   });
 
   router.use(requireBackoffice(gateway, repository));
+  router.use(createBackofficeSoporteRouter({ adminGateway }));
   const context = (res) => res.locals.backoffice;
   const account = (req, res) => {
     const cuenta = parse(id, req.params.cuentaId);
@@ -172,6 +149,24 @@ export function createBackofficeRouter({ env, gateway, adminGateway, recordLog, 
     });
   };
   read('/resumen', 'resumen');
+  router.get('/supervision', requireRole(repository, ...all), async (req, res) => {
+    const { meses } = parse(z.strictObject({ meses: z.enum(['6', '12']).default('6') }), req.query);
+    const data = await repository.supervision(context(res), Number(meses));
+    res.json({
+      data: {
+        ...data,
+        servicios: {
+          solicitudes_publicas: Boolean(env.VISITAS_PUBLICAS_HABILITADAS),
+          correo: {
+            habilitado: env.VISITAS_CORREO_HABILITADO !== false,
+            configurado: correoVisitaConfigurado(env),
+            proveedor: env.VISITAS_CORREO_PROVEEDOR === 'smtp' ? 'smtp' : 'resend',
+          },
+          web_push: Boolean(env.WEB_PUSH_ENABLED),
+        },
+      },
+    });
+  });
   read('/cuentas', 'cuentas', all, undefined, true);
   read('/cuentas/:cuentaId', 'detalle', all, (req, res) => ({ cuenta: account(req, res) }));
   read(
@@ -352,6 +347,16 @@ export function createBackofficeRouter({ env, gateway, adminGateway, recordLog, 
     });
   });
   router.post(
+    '/logos/:variante/validar',
+    requireRole(repository, 'super_admin'),
+    express.raw({ type: ['image/png', 'image/svg+xml'], limit: '2mb' }),
+    async (req, res) => {
+      const variant = parse(variante, req.params.variante);
+      const { data } = await prepareLogo(req.body, req.get('content-type')?.split(';')[0], variant);
+      res.set('Cache-Control', 'no-store').type('image/png').send(data);
+    },
+  );
+  router.post(
     '/logos/:variante/publicar',
     requireRole(repository, 'super_admin'),
     express.raw({ type: ['image/png', 'image/svg+xml'], limit: '2mb' }),
@@ -393,6 +398,7 @@ export function createBackofficeRouter({ env, gateway, adminGateway, recordLog, 
         'degradado',
         'recuperado',
         'operacion',
+        'soporte',
         'logs',
         'marca',
         ...(current.rol === 'soporte' ? [] : ['auditoria', 'configuracion']),

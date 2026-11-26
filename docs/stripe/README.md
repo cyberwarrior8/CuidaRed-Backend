@@ -1,6 +1,6 @@
 # Probar los pagos de CuidaRed con Stripe Sandbox
 
-Esta guía cubre el recorrido completo desde la publicación del precio hasta la confirmación del pago en CuidaRed. Usa un sandbox de Stripe, cuentas de prueba y un proyecto Supabase autorizado con las migraciones de la fase 8. [Estado de las migraciones](../CAMBIOS-SCHEMA-CUIDARED.md)
+Esta guía cubre el recorrido completo desde la publicación del precio hasta la confirmación del pago en CuidaRed. Usa un sandbox de Stripe, cuentas de prueba y un proyecto Supabase autorizado con las migraciones de la fase 8. [Estado de las migraciones](../CAMBIOS-SCHEMA-SUSCRIPCIONES.md)
 
 ## 1. Preparar Stripe y los usuarios de prueba
 

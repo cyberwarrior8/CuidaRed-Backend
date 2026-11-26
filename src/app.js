@@ -27,6 +27,7 @@ import { createMisMembresiasRouter } from './modules/miembros/mis-membresias-rou
 import { createNecesidadesRouter } from './modules/necesidades/necesidades-routes.js';
 import { createSeguimientoRouter } from './modules/seguimiento/seguimiento-routes.js';
 import { createSyncRouter } from './modules/sync/sync-routes.js';
+import { createSoporteRouter } from './modules/soporte/soporte-routes.js';
 import { createVisitasRouter } from './modules/visitas/visitas-routes.js';
 import { createWebPushRouter } from './modules/web-push/web-push-routes.js';
 import { createBackofficeRouter } from './modules/backoffice/backoffice-routes.js';
@@ -135,6 +136,7 @@ export function createApp({
   enCuenta.use(requireCuenta());
   enCuenta.use(createCuentaRouter(deps));
   enCuenta.use(createMiembrosRouter(deps));
+  enCuenta.use(createSoporteRouter(deps));
   enCuenta.use(createEnvejecientesRouter(deps));
   enCuenta.use(createSeguimientoRouter(deps));
   enCuenta.use(createVisitasRouter(deps));
