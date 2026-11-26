@@ -4,7 +4,7 @@ CuidaRed usa Stripe Checkout alojado para cobrar la suscripción de prueba de un
 
 ## Configuración
 
-Sigue el [README de pruebas de Stripe](stripe/README.md) para crear los productos, configurar el entorno, reenviar eventos y probar los pagos. Antes de usar otro entorno compartido, revisa cuáles migraciones de la fase 8 están aplicadas y obtén aprobación para las pendientes. [Registro de cambios](CAMBIOS-SCHEMA-CUIDARED.md)
+Sigue el [README de pruebas de Stripe](stripe/README.md) para crear los productos, configurar el entorno, reenviar eventos y probar los pagos. Antes de usar otro entorno compartido, revisa cuáles migraciones de la fase 8 están aplicadas y obtén aprobación para las pendientes. [Registro de cambios](CAMBIOS-SCHEMA-SUSCRIPCIONES.md)
 
 ## Catálogo
 

@@ -11,6 +11,10 @@ const rpcVisitaPublica = new Set([
   'api_publico_crear_solicitud',
   'api_publico_consultar_solicitud',
   'api_publico_registrar_observacion_posterior',
+  'api_publico_preparar_evidencia',
+  'api_publico_adjuntar_evidencia',
+  'api_publico_descartar_evidencia',
+  'api_publico_evidencia_descarga',
   'api_visita_reclamar_avisos',
   'api_visita_cerrar_aviso',
 ]);
@@ -25,6 +29,31 @@ function rpcError(name, result) {
     }
   }
   return error;
+}
+
+function storageVisitante(admin) {
+  return {
+    async subir(ruta, datos) {
+      if (!/^solicitud\/[0-9a-f-]{36}\/[0-9a-f-]{36}\.jpg$/.test(ruta)) throw unavailable();
+      const { error } = await admin.storage
+        .from('visitas-visitantes')
+        .upload(ruta, datos, { contentType: 'image/jpeg', upsert: true, cacheControl: '0' });
+      if (error) throw unavailable();
+    },
+    async borrar(ruta) {
+      if (!/^solicitud\/[0-9a-f-]{36}\/[0-9a-f-]{36}\.jpg$/.test(ruta)) throw unavailable();
+      const { error } = await admin.storage.from('visitas-visitantes').remove([ruta]);
+      if (error) throw unavailable();
+    },
+    async descarga(ruta, nombre) {
+      if (!/^solicitud\/[0-9a-f-]{36}\/[0-9a-f-]{36}\.jpg$/.test(ruta)) throw unavailable();
+      const { data, error } = await admin.storage
+        .from('visitas-visitantes')
+        .createSignedUrl(ruta, 300, { download: nombre });
+      if (error || !data?.signedUrl) throw unavailable();
+      return data.signedUrl;
+    },
+  };
 }
 
 function systemOptions(fetchImpl) {
@@ -58,7 +87,15 @@ export function createAdminGateway(env, fetchImpl = globalThis.fetch) {
   const backofficeRpc = async (name, args) => {
     if (!/^[a-z_]+$/.test(name)) throw new Error('RPC administrativa inválida.');
     const validatingSession = name === 'sesion' && args?.p_accion === 'validar';
-    const read = name === 'leer' || name === 'eventos' || validatingSession;
+    const read =
+      [
+        'leer',
+        'eventos',
+        'supervision',
+        'soporte_leer',
+        'eliminacion_leer',
+        'eliminacion_estado',
+      ].includes(name) || validatingSession;
     const rpc = () => admin.rpc('api_bo_' + name, args).retry(false);
     const attempt = () => (read ? rpc().abortSignal(AbortSignal.timeout(5000)) : rpc());
     let result = await attempt();
@@ -112,6 +149,11 @@ export function createAdminGateway(env, fetchImpl = globalThis.fetch) {
   }
 
   return {
+    evidenciaVisitante: storageVisitante(admin),
+    async deleteUser(id) {
+      const { error } = await admin.auth.admin.deleteUser(id, false);
+      if (error) throw unavailable();
+    },
     async resendInvitation({ id, email }) {
       const { data, error } = await admin.auth.admin.getUserById(id);
       if (error || !data.user) throw unavailable();

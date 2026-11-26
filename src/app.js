@@ -27,6 +27,7 @@ import { createMisMembresiasRouter } from './modules/miembros/mis-membresias-rou
 import { createNecesidadesRouter } from './modules/necesidades/necesidades-routes.js';
 import { createSeguimientoRouter } from './modules/seguimiento/seguimiento-routes.js';
 import { createSyncRouter } from './modules/sync/sync-routes.js';
+import { createSoporteRouter } from './modules/soporte/soporte-routes.js';
 import { createVisitasRouter } from './modules/visitas/visitas-routes.js';
 import { createWebPushRouter } from './modules/web-push/web-push-routes.js';
 import { createBackofficeRouter } from './modules/backoffice/backoffice-routes.js';
@@ -104,6 +105,10 @@ export function createApp({
   // Un lote de sync con observaciones y necesidades puede superar 16 kB; solo esa ruta admite más. Si el analizador
   // de la ruta ya leyó el cuerpo, el global no vuelve a leerlo.
   app.use('/api/v1/cuentas/:cuentaId/sync', express.json({ limit: '256kb', strict: true }));
+  app.post(
+    '/api/v1/publico/solicitudes-visita/evidencias',
+    express.json({ limit: '3mb', strict: true }),
+  );
   app.use(express.json({ limit: '16kb', strict: true }));
   app.get('/health/live', (_req, res) => res.json({ status: 'ok' }));
   // Módulo Backoffice exclusivo para administración interna de plataforma (BO-01, BO-02)
@@ -131,6 +136,7 @@ export function createApp({
   enCuenta.use(requireCuenta());
   enCuenta.use(createCuentaRouter(deps));
   enCuenta.use(createMiembrosRouter(deps));
+  enCuenta.use(createSoporteRouter(deps));
   enCuenta.use(createEnvejecientesRouter(deps));
   enCuenta.use(createSeguimientoRouter(deps));
   enCuenta.use(createVisitasRouter(deps));

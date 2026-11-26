@@ -1,5 +1,7 @@
 /* Persistencia de visitas y solicitudes de visita mediante RPC · ID04/RF-02. © 2026 Equipo CuidaRed – INTEC. */
 import { unavailable } from '../../lib/errors.js';
+import { randomUUID } from 'node:crypto';
+import { generarCodigoSeguimiento, hashCodigo } from '../publico/codigo-seguimiento.js';
 import { sinNulos } from './visitas-schemas.js';
 
 const esObjeto = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -24,7 +26,18 @@ const orden = (sort) =>
  * Cada operación llama una RPC de `cuidared_api` con el JWT del usuario (RLS y auth.uid() activos). La RPC es la que
  * autoriza: valida membresía, permiso, alcance sobre cada adulto y participación; aquí solo se arman los parámetros.
  */
-export function createVisitasRepository(rpc) {
+export function createVisitasRepository(rpc, env = {}) {
+  const referencia = () => {
+    if (!env.CODIGO_SEGUIMIENTO_SECRETO) throw unavailable();
+    const referencia_codigo = randomUUID();
+    return {
+      referencia_codigo,
+      codigo_hash: hashCodigo(
+        generarCodigoSeguimiento(referencia_codigo, env.CODIGO_SEGUIMIENTO_SECRETO),
+        env.CODIGO_SEGUIMIENTO_SECRETO,
+      ),
+    };
+  };
   return {
     async listar(cuentaId, { filters, sort, limit, offset }) {
       return pagina(
@@ -44,14 +57,22 @@ export function createVisitasRepository(rpc) {
     },
     async programar(cuentaId, datos) {
       return objeto(
-        await rpc('api_programar_visita', { p_cuenta_id: cuentaId, p_datos: sinNulos(datos) }),
+        await rpc('api_programar_visita', {
+          p_cuenta_id: cuentaId,
+          p_datos: { ...sinNulos(datos), ...(datos.visitante_externo ? referencia() : {}) },
+        }),
       );
     },
     async programarRecurrentes(cuentaId, datos) {
       return objeto(
         await rpc('api_programar_visitas_recurrentes', {
           p_cuenta_id: cuentaId,
-          p_datos: sinNulos(datos),
+          p_datos: {
+            ...sinNulos(datos),
+            ...(datos.visitante_externo
+              ? { referencias: Array.from({ length: 60 }, referencia) }
+              : {}),
+          },
         }),
       );
     },
